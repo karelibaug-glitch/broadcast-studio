@@ -1,0 +1,24 @@
+[
+  {
+    "id": "rtmp-d0fd477d",
+    "name": "Swa.Media_T",
+    "platform": "youtube",
+    "server_url": "rtmp://a.rtmp.youtube.com/live2",
+    "stream_key": "x56x-xje1-1cak-mfkg-3gqm",
+    "enabled": true,
+    "status": "idle",
+    "error_message": null,
+    "bytes_sent": 0
+  },
+  {
+    "id": "rtmp-fa02bf06",
+    "name": "Swa.Media_60p",
+    "platform": "youtube",
+    "server_url": "rtmp://a.rtmp.youtube.com/live2",
+    "stream_key": "s82u-vcym-s02t-0h41-3fc3",
+    "enabled": false,
+    "status": "idle",
+    "error_message": null,
+    "bytes_sent": 0
+  }
+]

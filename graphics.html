@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Studio Graphics Pro | Lower-Thirds & News Tickers</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#09090b">
+    <link rel="stylesheet" href="css/tailwind.min.css">
+    <script src="js/peerjs.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #09090b;
+            color: #f4f4f5;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Transparent Overlay Mode for OBS / vMix */
+        body.transparent-mode {
+            background: transparent !important;
+        }
+
+        body.transparent-mode #editor-workspace {
+            display: none !important;
+        }
+
+        body.transparent-mode #live-overlay-container {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: transparent !important;
+            z-index: 999999 !important;
+        }
+
+        /* Marquee Scrolling Animation */
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .animate-marquee {
+            display: inline-block;
+            white-space: nowrap;
+            animation: marquee 16s linear infinite;
+        }
+
+        .animate-marquee:hover {
+            animation-play-state: paused;
+        }
+
+        /* Lower Third Themes */
+        .theme-news {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(2, 6, 23, 0.95) 100%);
+            border-left: 6px solid #ef4444;
+        }
+
+        .theme-tech {
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(3, 7, 18, 0.95) 100%);
+            border-left: 6px solid #3b82f6;
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.3);
+        }
+
+        .theme-cyber {
+            background: linear-gradient(135deg, rgba(24, 24, 27, 0.95) 0%, rgba(9, 9, 11, 0.95) 100%);
+            border-left: 6px solid #10b981;
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.3);
+        }
+
+        .theme-esports {
+            background: linear-gradient(135deg, rgba(88, 28, 135, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%);
+            border-left: 6px solid #a855f7;
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #18181b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
+
+    <!-- ==========================================
+         TOP NAVIGATION SUITE BAR
+         ========================================== -->
+    <header class="bg-zinc-900/95 border-b border-zinc-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-50">
+        <div class="flex items-center gap-3">
+            <h1 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2 uppercase">
+                <span>🎨 Studio Graphics Pro</span>
+                <span class="text-[10px] bg-purple-600/20 text-purple-300 border border-purple-500/40 px-2 py-0.5 rounded font-mono font-bold">GFX v4.2</span>
+            </h1>
+
+            <!-- Suite Hub Navigation -->
+            <nav class="hidden md:flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs font-bold">
+                <a href="director_suite.html" class="px-3 py-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1">
+                    <span>⚗️ Director Suite</span>
+                </a>
+                <a href="switcher.html" class="px-3 py-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1">
+                    <span>🎬 Scene Switcher</span>
+                </a>
+                <a href="graphics.html" class="px-3 py-1 rounded-lg bg-purple-600 text-white shadow-md flex items-center gap-1">
+                    <span>🎨 Lower-Thirds & GFX</span>
+                </a>
+                <a href="ai_audio.html" class="px-3 py-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1">
+                    <span>🧠 AI & Audio Lab</span>
+                </a>
+            </nav>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <!-- Offline WebRTC Sync -->
+            <div class="flex items-center gap-2 text-xs font-mono text-zinc-400 bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
+                <span>ROOM:</span>
+                <input id="graphics-room-id" type="text" value="91629" class="bg-transparent text-white font-bold tracking-wider w-16 text-center border-b border-zinc-700 focus:outline-none focus:border-purple-500">
+                <button id="gfx-webrtc-sync-btn" onclick="toggleGraphicsPeerJSSync()" class="bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1">
+                    <span>⚡</span>
+                    <span id="gfx-sync-btn-text">Sync</span>
+                </button>
+            </div>
+
+            <!-- Copy Transparent Browser Source URL for OBS/vMix -->
+            <button onclick="copyOBSOverlayURL()"
+                class="bg-zinc-800 hover:bg-zinc-700 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                title="Copy transparent overlay URL for OBS Browser Source">
+                <span>🔗 OBS Source</span>
+            </button>
+
+            <a href="index.html#controller" target="_blank"
+                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+                <span>🎛️ Canvas Desk ↗</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- ==========================================
+         MAIN GRAPHICS WORKSPACE
+         ========================================== -->
+    <main id="editor-workspace" class="flex-1 p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-[1920px] mx-auto w-full overflow-y-auto">
+
+        <!-- ==========================================
+             LEFT 8 COLUMNS: LIVE PREVIEW MONITOR & TIMELINE
+             ========================================== -->
+        <div class="lg:col-span-8 flex flex-col gap-4">
+
+            <!-- 16:9 LIVE GFX PREVIEW CANVAS -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <h2 class="text-xs font-bold text-zinc-200 uppercase tracking-wider">Live Graphic Output Preview (16:9 4K)</h2>
+                    </div>
+                    <span class="text-[10px] font-mono text-zinc-500">ALPHA TRANSPARENCY: ENABLED</span>
+                </div>
+
+                <!-- Preview Screen Container -->
+                <div id="live-overlay-container" class="relative w-full aspect-video bg-zinc-950 rounded-xl overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">
+                    
+                    <!-- Background Grid Pattern for Preview Mode -->
+                    <div class="absolute inset-0 bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none"></div>
+
+                    <!-- Station Logo Bug Widget (Top Right) -->
+                    <div id="gfx-logo-bug" class="absolute top-6 right-6 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-zinc-700/60 shadow-xl transition-all duration-300">
+                        <span class="text-lg">⚡</span>
+                        <div class="flex flex-col">
+                            <span class="text-xs font-black tracking-widest text-white uppercase">STUDIO HD</span>
+                            <span id="logo-clock" class="text-[9px] font-mono text-zinc-400">12:00:00 UTC</span>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Live Social Chat Bubble (Top Left) -->
+                    <div id="gfx-chat-bubble" class="absolute top-6 left-6 max-w-sm bg-zinc-900/90 backdrop-blur-md border border-zinc-700/80 rounded-2xl p-3 shadow-2xl transition-all duration-300 transform -translate-y-4 opacity-0 pointer-events-none">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-base">💬</span>
+                            <span id="chat-author" class="text-xs font-bold text-blue-400">@tech_enthusiast</span>
+                            <span class="text-[9px] text-zinc-500 font-mono">11:04 AM</span>
+                        </div>
+                        <p id="chat-message" class="text-xs text-zinc-200 leading-snug">
+                            "The picture quality on this stream is absolutely pristine! What camera switcher are you using?"
+                        </p>
+                    </div>
+
+                    <!-- Lower-Third Banner (Bottom Left) -->
+                    <div id="gfx-lower-third" class="absolute bottom-12 left-8 right-8 transition-all duration-500 transform translate-y-8 opacity-0 pointer-events-none">
+                        <div id="lt-card-body" class="inline-flex flex-col theme-tech rounded-r-2xl px-6 py-3 shadow-2xl max-w-xl">
+                            <div class="flex items-center gap-3">
+                                <span id="lt-display-icon" class="text-2xl">🎙️</span>
+                                <div>
+                                    <h3 id="lt-preview-name" class="text-lg sm:text-2xl font-black text-white tracking-wide leading-none">DR. JANE FOSTER</h3>
+                                    <p id="lt-preview-title" class="text-xs sm:text-sm font-semibold text-blue-400 uppercase tracking-widest mt-1">SENIOR BROADCAST ARCHITECT</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- News Marquee Ticker (Bottom Edge) -->
+                    <div id="gfx-news-ticker" class="absolute bottom-0 left-0 right-0 bg-red-950/95 border-t-2 border-red-500 text-white py-1.5 px-4 text-xs font-bold flex items-center gap-3 overflow-hidden shadow-2xl transition-all duration-300 transform translate-y-full opacity-0 pointer-events-none">
+                        <span id="ticker-badge" class="bg-red-600 text-[10px] px-2.5 py-0.5 rounded font-black tracking-widest uppercase shrink-0 shadow-[0_0_12px_rgba(239,68,68,0.8)]">
+                            BREAKING NEWS
+                        </span>
+                        <div class="overflow-hidden flex-1 relative whitespace-nowrap">
+                            <span id="ticker-marquee-text" class="animate-marquee font-mono text-zinc-100 tracking-wide text-xs">
+                                GLOBAL AI SUMMIT 2026 • RECORD BREAKTHROUGHS ANNOUNCED IN QUANTUM COMPUTING & REAL-TIME NEURAL STREAMING • LIVE WORLDWIDE BROADCAST
+                            </span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- QUICK ON-AIR ACTION BAR -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-zinc-400 font-mono">QUICK TOGGLE:</span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 flex-1 justify-end">
+                    <button id="btn-toggle-lt" onclick="toggleLowerThird()"
+                        class="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-md">
+                        <span>🏷️ Lower-Third: <strong id="lt-btn-status">OFF</strong></span>
+                    </button>
+                    <button id="btn-toggle-ticker" onclick="toggleTicker()"
+                        class="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5">
+                        <span>📰 News Ticker: <strong id="ticker-btn-status">OFF</strong></span>
+                    </button>
+                    <button id="btn-toggle-chat" onclick="toggleChatBubble()"
+                        class="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5">
+                        <span>💬 Social Chat: <strong id="chat-btn-status">OFF</strong></span>
+                    </button>
+                    <button id="btn-toggle-bug" onclick="toggleLogoBug()"
+                        class="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5">
+                        <span>⚡ Station Bug: <strong id="bug-btn-status">ON</strong></span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ==========================================
+             RIGHT 4 COLUMNS: GRAPHICS DESIGNER PANEL
+             ========================================== -->
+        <div class="lg:col-span-4 flex flex-col gap-4">
+
+            <!-- 1. LOWER-THIRD CUSTOMIZER -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <span>🏷️ Lower-Third Builder</span>
+                    </h3>
+                    <span class="text-[9px] font-mono text-blue-400 font-bold">TEMPLATE 01</span>
+                </div>
+
+                <!-- Theme Style Selectors -->
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Visual Theme Style:</label>
+                    <div class="grid grid-cols-2 gap-1.5 text-xs font-bold">
+                        <button onclick="setLowerThirdTheme('theme-tech')" class="p-2 rounded-lg bg-blue-950 border border-blue-600 text-blue-300 text-left">🔵 Tech Blue</button>
+                        <button onclick="setLowerThirdTheme('theme-news')" class="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-red-400 hover:border-red-500 text-left">🔴 News Red</button>
+                        <button onclick="setLowerThirdTheme('theme-cyber')" class="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-emerald-400 hover:border-emerald-500 text-left">🟢 Cyber Green</button>
+                        <button onclick="setLowerThirdTheme('theme-esports')" class="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-purple-400 hover:border-purple-500 text-left">🟣 Esports Violet</button>
+                    </div>
+                </div>
+
+                <!-- Text Inputs -->
+                <div class="flex flex-col gap-2">
+                    <div>
+                        <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Speaker Name:</label>
+                        <input id="input-lt-name" type="text" value="Dr. Jane Foster"
+                            oninput="syncLowerThird()"
+                            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500 font-bold">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Role / Title:</label>
+                        <input id="input-lt-title" type="text" value="Senior Broadcast Architect"
+                            oninput="syncLowerThird()"
+                            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Auto-Hide Timer -->
+                <div class="flex items-center justify-between pt-1">
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Auto-Hide After:</label>
+                    <select id="lt-autohide-sec" class="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 outline-none">
+                        <option value="0">Manual (Never)</option>
+                        <option value="5" selected>5 Seconds</option>
+                        <option value="10">10 Seconds</option>
+                        <option value="15">15 Seconds</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 2. BREAKING NEWS TICKER CUSTOMIZER -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📰 News Marquee Studio</span>
+                    </h3>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Badge Label:</label>
+                    <input id="input-ticker-badge" type="text" value="BREAKING NEWS"
+                        oninput="syncTicker()"
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-red-400 font-bold outline-none focus:border-red-500">
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Marquee Text Stream:</label>
+                    <textarea id="input-ticker-text" rows="3"
+                        oninput="syncTicker()"
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-200 outline-none focus:border-blue-500 resize-none font-mono">GLOBAL AI SUMMIT 2026 • RECORD BREAKTHROUGHS ANNOUNCED IN QUANTUM COMPUTING & REAL-TIME NEURAL STREAMING • LIVE WORLDWIDE BROADCAST</textarea>
+                </div>
+            </div>
+
+            <!-- 3. LIVE SOCIAL CHAT POPUP BUILDER -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <span>💬 Social Comment Popups</span>
+                    </h3>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Username / Handle:</label>
+                    <input id="input-chat-author" type="text" value="@tech_enthusiast"
+                        oninput="syncChatBubble()"
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-blue-400 font-bold outline-none focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Viewer Comment:</label>
+                    <input id="input-chat-msg" type="text" value="The picture quality on this stream is absolutely pristine! What camera switcher are you using?"
+                        oninput="syncChatBubble()"
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- ==========================================
+         JAVASCRIPT: GRAPHICS SUITE ENGINE
+         ========================================== -->
+    <script>
+        // --- State Management ---
+        let isLowerThirdActive = false;
+        let isTickerActive = false;
+        let isChatActive = false;
+        let isLogoBugActive = true;
+        let autoHideTimer = null;
+
+        // --- Clock Update ---
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toISOString().substring(11, 19) + ' UTC';
+            const clockEl = document.getElementById('logo-clock');
+            if (clockEl) clockEl.innerText = timeStr;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- Check for Overlay Mode (#overlay) ---
+        if (window.location.hash.includes('overlay')) {
+            document.body.classList.add('transparent-mode');
+        }
+
+        // --- Lower-Third Handlers ---
+        function toggleLowerThird() {
+            isLowerThirdActive = !isLowerThirdActive;
+            const btn = document.getElementById('btn-toggle-lt');
+            const statusTxt = document.getElementById('lt-btn-status');
+            const element = document.getElementById('gfx-lower-third');
+
+            if (isLowerThirdActive) {
+                element.classList.remove('opacity-0', 'translate-y-8');
+                element.classList.add('opacity-100', 'translate-y-0');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-1.5 shadow-lg shadow-red-900/30';
+                statusTxt.innerText = 'ON AIR';
+
+                // Auto-Hide Handler
+                const autoSec = parseInt(document.getElementById('lt-autohide-sec').value) || 0;
+                if (autoSec > 0) {
+                    if (autoHideTimer) clearTimeout(autoHideTimer);
+                    autoHideTimer = setTimeout(() => {
+                        if (isLowerThirdActive) toggleLowerThird();
+                    }, autoSec * 1000);
+                }
+            } else {
+                element.classList.remove('opacity-100', 'translate-y-0');
+                element.classList.add('opacity-0', 'translate-y-8');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-md';
+                statusTxt.innerText = 'OFF';
+                if (autoHideTimer) clearTimeout(autoHideTimer);
+            }
+        }
+
+        function syncLowerThird() {
+            const name = document.getElementById('input-lt-name').value || 'Presenter Name';
+            const title = document.getElementById('input-lt-title').value || 'Role / Title';
+            document.getElementById('lt-preview-name').innerText = name;
+            document.getElementById('lt-preview-title').innerText = title.toUpperCase();
+        }
+
+        function setLowerThirdTheme(themeClass) {
+            const card = document.getElementById('lt-card-body');
+            card.className = `inline-flex flex-col ${themeClass} rounded-r-2xl px-6 py-3 shadow-2xl max-w-xl transition-all duration-300`;
+        }
+
+        // --- News Ticker Handlers ---
+        function toggleTicker() {
+            isTickerActive = !isTickerActive;
+            const btn = document.getElementById('btn-toggle-ticker');
+            const statusTxt = document.getElementById('ticker-btn-status');
+            const element = document.getElementById('gfx-news-ticker');
+
+            if (isTickerActive) {
+                element.classList.remove('opacity-0', 'translate-y-full');
+                element.classList.add('opacity-100', 'translate-y-0');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-1.5 shadow-lg shadow-red-900/30';
+                statusTxt.innerText = 'ON AIR';
+            } else {
+                element.classList.remove('opacity-100', 'translate-y-0');
+                element.classList.add('opacity-0', 'translate-y-full');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5';
+                statusTxt.innerText = 'OFF';
+            }
+        }
+
+        function syncTicker() {
+            const badge = document.getElementById('input-ticker-badge').value || 'BREAKING NEWS';
+            const text = document.getElementById('input-ticker-text').value || '';
+            document.getElementById('ticker-badge').innerText = badge.toUpperCase();
+            document.getElementById('ticker-marquee-text').innerText = text;
+        }
+
+        // --- Social Chat Bubble Handlers ---
+        function toggleChatBubble() {
+            isChatActive = !isChatActive;
+            const btn = document.getElementById('btn-toggle-chat');
+            const statusTxt = document.getElementById('chat-btn-status');
+            const element = document.getElementById('gfx-chat-bubble');
+
+            if (isChatActive) {
+                element.classList.remove('opacity-0', '-translate-y-4');
+                element.classList.add('opacity-100', 'translate-y-0');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-lg shadow-blue-900/30';
+                statusTxt.innerText = 'ON AIR';
+            } else {
+                element.classList.remove('opacity-100', 'translate-y-0');
+                element.classList.add('opacity-0', '-translate-y-4');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5';
+                statusTxt.innerText = 'OFF';
+            }
+        }
+
+        function syncChatBubble() {
+            const author = document.getElementById('input-chat-author').value || '@viewer';
+            const msg = document.getElementById('input-chat-msg').value || '';
+            document.getElementById('chat-author').innerText = author;
+            document.getElementById('chat-message').innerText = `"${msg}"`;
+        }
+
+        // --- Station Logo Bug Handlers ---
+        function toggleLogoBug() {
+            isLogoBugActive = !isLogoBugActive;
+            const btn = document.getElementById('btn-toggle-bug');
+            const statusTxt = document.getElementById('bug-btn-status');
+            const element = document.getElementById('gfx-logo-bug');
+
+            if (isLogoBugActive) {
+                element.classList.remove('opacity-0');
+                element.classList.add('opacity-100');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5';
+                statusTxt.innerText = 'ON';
+            } else {
+                element.classList.remove('opacity-100');
+                element.classList.add('opacity-0');
+                btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700 transition flex items-center gap-1.5';
+                statusTxt.innerText = 'OFF';
+            }
+        }
+
+        // --- Offline PeerJS WebRTC Remote Graphics Sync Engine ---
+        let graphicsPeer = null;
+        let graphicsDataConn = null;
+
+        const isPeerHttps = window.location.protocol === 'https:';
+        const peerPort = window.location.port ? parseInt(window.location.port, 10) : (isPeerHttps ? 443 : 80);
+        const peerConfig = {
+            host: window.location.hostname || 'localhost',
+            port: peerPort,
+            path: '/peerjs',
+            secure: isPeerHttps,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ],
+                iceCandidatePoolSize: 0,
+                sdpSemantics: 'unified-plan'
+            }
+        };
+
+        function toggleGraphicsPeerJSSync() {
+            const roomId = (document.getElementById('graphics-room-id').value || '91629').trim();
+            const btn = document.getElementById('gfx-webrtc-sync-btn');
+            const btnText = document.getElementById('gfx-sync-btn-text');
+
+            if (graphicsPeer) {
+                try { if (graphicsDataConn) graphicsDataConn.close(); } catch (_) {}
+                try { graphicsPeer.destroy(); } catch (_) {}
+                graphicsPeer = null;
+                graphicsDataConn = null;
+                btnText.innerText = 'Sync';
+                btn.className = 'bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1';
+                return;
+            }
+
+            btnText.innerText = 'Connecting...';
+            btn.className = 'bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] font-bold animate-pulse flex items-center gap-1';
+
+            const myPeerId = `gfx-overlay-${Math.random().toString(36).substring(2, 8)}`;
+            graphicsPeer = new Peer(myPeerId, peerConfig);
+
+            graphicsPeer.on('open', (id) => {
+                const hostPeerId = `studio-host-${roomId}`;
+                console.log(`[Graphics WebRTC] Connecting to ${hostPeerId} as ${id}...`);
+                
+                graphicsDataConn = graphicsPeer.connect(hostPeerId, {
+                    reliable: true,
+                    metadata: { type: 'GFX_OVERLAY_CONTROL', role: 'graphics_desk' }
+                });
+
+                graphicsDataConn.on('open', () => {
+                    btnText.innerText = 'Synced';
+                    btn.className = 'bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1';
+                });
+
+                graphicsDataConn.on('data', (data) => {
+                    if (!data) return;
+                    if (data.type === 'GFX_TOGGLE_LT') toggleLowerThird();
+                    else if (data.type === 'GFX_TOGGLE_TICKER') toggleTicker();
+                    else if (data.type === 'GFX_TOGGLE_CHAT') toggleChatBubble();
+                    else if (data.type === 'GFX_TOGGLE_BUG') toggleLogoBug();
+                    else if (data.type === 'GFX_UPDATE_LT') {
+                        if (data.name) document.getElementById('input-lt-name').value = data.name;
+                        if (data.title) document.getElementById('input-lt-title').value = data.title;
+                        syncLowerThird();
+                    }
+                });
+
+                graphicsDataConn.on('close', () => {
+                    btnText.innerText = 'Sync';
+                    btn.className = 'bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1';
+                    graphicsDataConn = null;
+                });
+            });
+
+            graphicsPeer.on('error', (err) => {
+                console.warn('[Graphics WebRTC] Peer error:', err);
+                btnText.innerText = 'Sync';
+                btn.className = 'bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1';
+            });
+        }
+
+        function copyOBSOverlayURL() {
+            const url = window.location.protocol + '//' + window.location.host + '/graphics.html#overlay';
+            navigator.clipboard.writeText(url).then(() => {
+                alert('📋 Transparent OBS Overlay URL copied to clipboard!\nAdd as a Browser Source in OBS or vMix with 1920x1080 resolution.');
+            }).catch(e => {
+                prompt('Copy this URL into OBS Browser Source:', url);
+            });
+        }
+
+    </script>
+</body>
+
+</html>

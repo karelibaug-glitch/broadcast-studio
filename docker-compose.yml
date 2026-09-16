@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  broadcast-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: broadcast_studio_engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # HTTP / WebSockets Port
+      - "8443:8443"   # HTTPS / Secure WSS Companion Port
+    volumes:
+      - ./recordings:/app/recordings
+      - ./ssl:/app/ssl
+      - ./python_app/rtmp_destinations.json:/app/python_app/rtmp_destinations.json
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/rtmp/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

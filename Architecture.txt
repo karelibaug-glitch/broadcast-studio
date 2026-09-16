@@ -1,0 +1,130 @@
+Viewed websocket.py:1-91
+
+To implement the **H.264 WebRTC Bypass + FFmpeg Multi-RTMP** architecture in your project, here is how the pieces fit together:
+
+---
+
+### Implementation Architecture
+
+```mermaid
+flowchart TD
+    subgraph Browser Side [Frontend: Controller & Player]
+        UI[Multi-RTMP Output UI Panel]
+        WTC[WebRTC PeerConnection <br><i>Forced H.264 SDP</i>]
+    end
+
+    subgraph Backend Engine [Python Broadcast Engine]
+        WS[FastAPI WebSocket & REST API]
+        RTM[RTMP Stream Manager <br><i>Process Lifecycle & Health</i>]
+        FF[FFmpeg Process with Tee Muxer <br><code>-c:v copy -c:a aac -f tee</code>]
+    end
+
+    subgraph Broadcast Destinations [Live Channels]
+        D1[YouTube Live]
+        D2[Twitch]
+        D3[Facebook Live]
+        D4[Custom RTMP / Nginx]
+    end
+
+    UI -->|Start / Stop / Add Target| WS
+    WTC -->|H.264 Video Stream| RTM
+    WS -->|Control Commands| RTM
+    RTM -->|Stream Packets via Pipe| FF
+    FF -->|Bypass FLV Stream 1| D1
+    FF -->|Bypass FLV Stream 2| D2
+    FF -->|Bypass FLV Stream 3| D3
+    FF -->|Bypass FLV Stream 4| D4
+```
+
+---
+
+### Step-by-Step Breakdown
+
+#### 1. Force H.264 in WebRTC SDP (Frontend & Backend)
+We configure the SDP (Session Description Protocol) on the WebRTC connection to place `H264` as the highest priority codec:
+* Browser will automatically encode using hardware-accelerated H.264 (NVENC/Intel QuickSync/Apple VideoToolbox).
+* Ensures the video bitstream arrives in Annex-B / NAL unit format ready for RTMP without any decoding or transcoding.
+
+#### 2. Python Multi-RTMP Manager (`python_app/core/rtmp_manager.py`)
+A dedicated manager module that:
+* Accepts an arbitrary list of RTMP targets (e.g., YouTube `rtmp://a.rtmp.youtube.com/live2/KEY`, Twitch `rtmp://live.twitch.tv/app/KEY`).
+* Builds the single-encode/bypass FFmpeg command:
+  ```bash
+  ffmpeg -re -i [stream_pipe] \
+    -c:v copy \
+    -c:a aac -b:a 128k -ar 44100 \
+    -f tee -map 0:v -map 0:a \
+    "[f=flv:onfail=ignore]rtmp://url1/key1|[f=flv:onfail=ignore]rtmp://url2/key2"
+  ```
+* Monitors stream status, bitrate, connection health, and auto-restarts on network drops.
+
+#### 3. REST & WebSocket Endpoints (`python_app/api/`)
+* `GET /api/rtmp/targets` — List all configured RTMP channels.
+* `POST /api/rtmp/targets` — Add a new destination (Name, Server URL, Stream Key, Enabled toggle).
+* `DELETE /api/rtmp/targets/{id}` — Remove a channel.
+* `POST /api/rtmp/start` / `POST /api/rtmp/stop` — Start/Stop broadcasting to all active channels simultaneously.
+
+#### 4. Controller & Player UI Control Panel
+* Add a **"Stream Destinations (Multi-RTMP)"** modal/dock in [`index.html`](file:///e:/MediaFlow_Engine/Brod_cast_App/index.html).
+* Quick presets for YouTube, Twitch, Facebook, Kick, and Custom RTMP.
+* One-click **"Go Live"** master button with live uptime timer, individual channel status indicators (🟢 Live / 🔴 Offline / ⚠️ Error), and stream key hiding for privacy.
+
+---
+
+### Next Steps
+
+Implementation Plan: Framerate, Bitrate Controls & Local Broadcast Recording Facility
+Provide user-configurable stream encoding parameters (Framerate, Video Bitrate, Audio Bitrate, Encoder Preset) and a simultaneous local broadcast recording facility (.mp4 / .mkv) with zero extra CPU overhead via the FFmpeg tee muxer bypass.
+
+Proposed Changes
+Backend Core & API
+[MODIFY] 
+python_app/core/rtmp_manager.py
+Add BroadcastSettings model/dictionary to RTMPStreamManager:
+video_bitrate_kbps: int (default 4500, range 1000 - 20000)
+framerate: int (default 30, choices: 60, 30, 24)
+audio_bitrate_kbps: int (default 128, choices: 192, 128, 96)
+preset: str (default "veryfast", choices: "ultrafast", "veryfast", "faster", "medium")
+record_local: bool (default False)
+recording_format: str (default "mp4", choices: "mp4", "mkv")
+Update build_ffmpeg_command to:
+Dynamically use configured bitrates (-b:v {bitrate}k, -maxrate {int(bitrate*1.15)}k, -bufsize {bitrate*2}k).
+Set -r {fps}, -g {fps*2}, -keyint_min {fps*2}.
+Set -c:a aac -b:a {audio_bitrate}k.
+When record_local is enabled, generate a timestamped file (e.g. recordings/broadcast_YYYYMMDD_HHMMSS.mp4) and append [f=mp4:onfail=ignore]recordings/... into the tee muxer string.
+Track current recording path and duration.
+Add REST endpoints in 
+python_app/api/routes.py
+:
+GET /api/rtmp/settings: Retrieve current encoder and recording settings.
+POST /api/rtmp/settings: Update encoder and recording settings.
+GET /api/recordings: List all recorded files with size, timestamp, and duration.
+DELETE /api/recordings/{filename}: Delete a recording.
+Mount /recordings static file route in python_app/main.py for instant playback and downloading.
+Frontend UI & Client Streamer
+[MODIFY] 
+index.html
+ & 
+python_app/static/index.html
+Add Stream & Recording Settings Section inside the Multi-RTMP Modal:
+Video Bitrate Selector: Quick presets (12 Mbps 4K, 6 Mbps 1080p60 HQ, 4.5 Mbps 1080p Standard, 2.5 Mbps 720p Eco, Custom).
+Framerate Selector: 60 FPS, 30 FPS, 24 FPS.
+Audio Bitrate Selector: 192 kbps (HQ), 128 kbps (Standard), 96 kbps (Eco).
+Encoder Speed Preset: ultrafast (Lowest Latency), veryfast (Balanced), medium (Max Quality).
+Local Recording Toggle: [x] Record broadcast locally to disk (.mp4).
+Add Recordings Manager Tab/Section in the modal:
+Lists recorded files with file size, date, download button, and delete button.
+Update startLiveCanvasIngest():
+Dynamically captures canvas at the user-selected FPS (canvas.captureStream(selectedFps)).
+Passes user-selected bitrate to MediaRecorder (videoBitsPerSecond: selectedBitrate * 1000).
+Verification Plan
+Automated Tests
+Run python -m unittest tests/test_all_features.py to verify:
+Settings persistence and validation.
+FFmpeg tee command construction with custom FPS, Bitrate, Preset, and Local MP4 recording target.
+API endpoints for settings and recordings CRUD.
+Manual Verification
+Start python run.py.
+Select 60 FPS / 6000 kbps with local recording enabled.
+Start Live Broadcast for 10 seconds and stop.
+Verify that the local .mp4 file is saved in recordings/ folder, playable, and recorded with audio.

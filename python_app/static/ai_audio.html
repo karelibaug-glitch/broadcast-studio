@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AI Virtual Studio & Audio Lab | Broadcast Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#09090b">
+    <link rel="stylesheet" href="css/tailwind.min.css">
+    <script src="js/peerjs.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #09090b;
+            color: #f4f4f5;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: -0.02em;
+        }
+
+        /* Glow effects */
+        .glow-purple {
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.35);
+        }
+
+        .glow-cyan {
+            box-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
+        }
+
+        .glow-emerald {
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.35);
+        }
+
+        /* Range sliders */
+        input[type=range] {
+            accent-color: #a855f7;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #18181b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
+
+    <!-- ==========================================
+         TOP SUITE NAVIGATION HEADER
+         ========================================== -->
+    <header class="bg-zinc-900/90 border-b border-zinc-800 backdrop-blur-md px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-purple-500 animate-pulse shadow-[0_0_10px_rgba(168,85,247,0.8)]"></span>
+                <h1 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2 uppercase">
+                    <span>🧠 AI & Audio Lab</span>
+                    <span class="text-[10px] bg-purple-600/20 text-purple-400 border border-purple-500/40 px-2 py-0.5 rounded font-mono font-bold">DSP v3.5</span>
+                </h1>
+            </div>
+
+            <!-- Suite Navigation Tabs -->
+            <nav class="hidden lg:flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs font-semibold ml-4">
+                <a href="director_suite.html" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition flex items-center gap-1.5">
+                    <span>⚗️</span>
+                    <span>Director Suite</span>
+                </a>
+                <a href="switcher.html" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition flex items-center gap-1.5">
+                    <span>🎬</span>
+                    <span>1. Scene Switcher</span>
+                </a>
+                <a href="graphics.html" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition flex items-center gap-1.5">
+                    <span>🎨</span>
+                    <span>2. Lower-Thirds GFX</span>
+                </a>
+                <a href="ai_audio.html" class="px-3 py-1.5 rounded-lg bg-purple-600/30 text-purple-300 border border-purple-500/40 transition flex items-center gap-1.5">
+                    <span>🧠</span>
+                    <span>3. AI Studio & Audio Lab</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Telemetry & Quick Link -->
+        <div class="flex items-center gap-3 text-xs font-mono">
+            <div class="hidden sm:flex items-center gap-3 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-400">
+                <div>AI LATENCY: <span id="ai-latency" class="text-purple-400 font-bold">14 ms</span></div>
+                <div>LIP DELAY: <span id="lip-delay-val" class="text-cyan-400 font-bold">+0 ms</span></div>
+                <div>DSP LOAD: <span id="dsp-load" class="text-emerald-400 font-bold">4.2%</span></div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <a href="index.html#controller" target="_blank"
+                    class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                    title="Open Live Canvas Controller in another window">
+                    <span>🎛️ Canvas Desk</span>
+                </a>
+
+                <button id="camera-start-btn" onclick="toggleCamera()"
+                    class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs tracking-wider uppercase shadow-[0_0_20px_rgba(168,85,247,0.4)] transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                    <span id="cam-btn-text">Start AI Cam</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==========================================
+         MAIN INTERACTION WORKSPACE
+         ========================================== -->
+    <main class="flex-1 p-4 grid grid-cols-1 xl:grid-cols-12 gap-4 max-w-[1920px] mx-auto w-full overflow-y-auto">
+
+        <!-- ==========================================
+             LEFT 7 COLUMNS: AI VIRTUAL STUDIO & WEBCAM
+             ========================================== -->
+        <div class="xl:col-span-7 flex flex-col gap-4">
+
+            <!-- AI Video Monitor Screen -->
+            <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold tracking-wider uppercase bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                            AI VIRTUAL STUDIO
+                        </span>
+                        <span id="studio-mode-label" class="text-xs font-bold text-zinc-300">Modern Newsroom Backdrop</span>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Capture Card / Camera Selector -->
+                        <div class="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800">
+                            <span class="text-xs">📷</span>
+                            <select id="camera-select" onchange="onCameraDeviceChanged()" class="bg-transparent text-xs text-zinc-200 font-mono focus:outline-none max-w-[180px] sm:max-w-[220px] truncate">
+                                <option value="">Auto Detect (USB / UVC)</option>
+                            </select>
+                        </div>
+
+                        <!-- Mic Selector -->
+                        <div class="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800">
+                            <span class="text-xs">🎙️</span>
+                            <select id="mic-select" onchange="onMicDeviceChanged()" class="bg-transparent text-xs text-zinc-200 font-mono focus:outline-none max-w-[160px] truncate">
+                                <option value="">Default Microphone</option>
+                            </select>
+                        </div>
+
+                        <select id="res-select" class="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:outline-none">
+                            <option value="1080p">1080p 60fps</option>
+                            <option value="720p" selected>720p 60fps</option>
+                            <option value="480p">480p Fast</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- WebRTC Room Broadcast Bar -->
+                <div class="flex flex-wrap items-center justify-between gap-2 bg-purple-950/20 border border-purple-900/40 px-3 py-2 rounded-xl text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-500 animate-ping"></span>
+                        <span class="text-zinc-400 font-medium">Offline WebRTC Studio Link:</span>
+                        <input id="webrtc-room-id" type="text" value="91629" placeholder="Room ID" class="bg-zinc-950 border border-zinc-700 px-2 py-0.5 rounded font-mono text-purple-300 w-24 text-center">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="webrtc-broadcast-btn" onclick="toggleWebRTCStreamToHost()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1 rounded-lg text-xs transition flex items-center gap-1">
+                            <span>📡</span>
+                            <span id="webrtc-btn-text">Transmit to Host</span>
+                        </button>
+                        <span id="webrtc-status-pill" class="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">STANDBY</span>
+                    </div>
+                </div>
+
+                <!-- Video Viewport -->
+                <div class="relative bg-black rounded-xl overflow-hidden aspect-video border border-zinc-800 flex items-center justify-center group shadow-2xl">
+                    <video id="raw-video" autoplay playsinline muted class="hidden"></video>
+                    <canvas id="output-canvas" width="1280" height="720" class="w-full h-full object-contain"></canvas>
+
+                    <!-- Camera Placeholder when off -->
+                    <div id="cam-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 text-zinc-500 gap-3">
+                        <div class="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shadow-inner">
+                            📷
+                        </div>
+                        <div class="text-center">
+                            <div class="text-sm font-bold text-zinc-300">Camera Offline</div>
+                            <div class="text-xs text-zinc-500 mt-0.5">Click "Start AI Cam" to initialize AI segmentation & background removal</div>
+                        </div>
+                    </div>
+
+                    <!-- Watermark HUD -->
+                    <div class="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-zinc-800 text-[11px] font-mono flex items-center gap-2 text-zinc-300">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>SEGMENTATION: <strong class="text-purple-400 font-bold" id="hud-bg-name">Modern Studio</strong></span>
+                    </div>
+
+                    <!-- Quick Snapshot Button -->
+                    <button onclick="takeSnapshot()" class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5">
+                        📸 Snapshot
+                    </button>
+                </div>
+
+                <!-- Virtual Studio Background Selectors -->
+                <div class="flex flex-col gap-2 pt-2">
+                    <div class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>Virtual Background Replacement</span>
+                        <span class="text-[11px] font-mono text-zinc-500 font-normal">Click preset to switch</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button onclick="setStudioBg('studio')" class="bg-zinc-950 hover:bg-purple-950/40 border-2 border-purple-500/50 p-2.5 rounded-xl text-left transition flex flex-col gap-1 shadow-sm">
+                            <span class="text-base">🏢</span>
+                            <span class="text-xs font-bold text-zinc-200">Modern Studio</span>
+                            <span class="text-[10px] text-zinc-500 font-mono">4K TV Studio</span>
+                        </button>
+
+                        <button onclick="setStudioBg('cyber')" class="bg-zinc-950 hover:bg-zinc-800/80 border border-zinc-800 p-2.5 rounded-xl text-left transition flex flex-col gap-1 shadow-sm">
+                            <span class="text-base">🌃</span>
+                            <span class="text-xs font-bold text-zinc-200">Cyber City</span>
+                            <span class="text-[10px] text-zinc-500 font-mono">Neon Nightscape</span>
+                        </button>
+
+                        <button onclick="setStudioBg('blur')" class="bg-zinc-950 hover:bg-zinc-800/80 border border-zinc-800 p-2.5 rounded-xl text-left transition flex flex-col gap-1 shadow-sm">
+                            <span class="text-base">✨</span>
+                            <span class="text-xs font-bold text-zinc-200">Bokeh Blur</span>
+                            <span class="text-[10px] text-zinc-500 font-mono">DSLR f/1.4 Sim</span>
+                        </button>
+
+                        <button onclick="setStudioBg('alpha')" class="bg-zinc-950 hover:bg-zinc-800/80 border border-zinc-800 p-2.5 rounded-xl text-left transition flex flex-col gap-1 shadow-sm">
+                            <span class="text-base">🏁</span>
+                            <span class="text-xs font-bold text-zinc-200">OBS Alpha</span>
+                            <span class="text-[10px] text-zinc-500 font-mono">100% Transparent</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sliders for AI tuning -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 bg-zinc-950/60 p-3 rounded-xl border border-zinc-800/60">
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-400 font-medium">Edge Feathering / Softness</span>
+                            <span id="feather-val" class="font-mono text-purple-400 font-bold">12 px</span>
+                        </div>
+                        <input id="feather-slider" type="range" min="0" max="30" value="12" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" oninput="updateFeather(this.value)">
+                    </div>
+
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-400 font-medium">Bokeh Background Blur</span>
+                            <span id="blur-val" class="font-mono text-purple-400 font-bold">18 px</span>
+                        </div>
+                        <input id="blur-slider" type="range" min="0" max="40" value="18" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" oninput="updateBlur(this.value)">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             RIGHT 5 COLUMNS: AUDIO DSP, LIP-SYNC & NOISE LAB
+             ========================================== -->
+        <div class="xl:col-span-5 flex flex-col gap-4">
+
+            <!-- 1. AUDIO LIP-SYNC ALIGNMENT LAB -->
+            <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold tracking-wider uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                            LIP-SYNC DELAY ENGINE
+                        </span>
+                    </div>
+                    <span id="sync-status" class="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 px-2 py-0.5 rounded">
+                        LOCKED
+                    </span>
+                </div>
+
+                <!-- Delay Slider Component -->
+                <div class="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 flex flex-col gap-2.5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-semibold text-zinc-300">Audio Time Offset</span>
+                        <div class="flex items-center gap-1.5">
+                            <span id="delay-display" class="text-lg font-mono font-black text-cyan-400">0 ms</span>
+                            <button onclick="resetDelay()" class="text-[10px] text-zinc-400 hover:text-white bg-zinc-800 px-2 py-0.5 rounded transition">Reset</button>
+                        </div>
+                    </div>
+                    <input id="delay-slider" type="range" min="-300" max="700" value="0" step="5" class="w-full h-2 bg-zinc-800 rounded-lg cursor-pointer" oninput="updateAudioDelay(this.value)" style="accent-color: #06b6d4;">
+                    <div class="flex justify-between text-[10px] font-mono text-zinc-500">
+                        <span>-300ms (Ahead)</span>
+                        <span>0ms (Direct)</span>
+                        <span>+700ms (HDMI/Capture Delay)</span>
+                    </div>
+                </div>
+
+                <!-- Lip-Sync Alignment Waveform Visualizer -->
+                <div class="bg-zinc-950 rounded-xl p-2.5 border border-zinc-800 flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[10px] font-mono text-zinc-400">
+                        <span>AUDIO VS VIDEO TIMECODE WAVEFORM</span>
+                        <span class="text-cyan-400">Δ = <span id="delta-val">0.00ms</span></span>
+                    </div>
+                    <canvas id="lipsync-canvas" width="600" height="80" class="w-full h-16 rounded bg-zinc-900"></canvas>
+                </div>
+
+                <!-- Delay Presets -->
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setDelayPreset(0)" class="bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 px-2 py-1.5 rounded-lg text-[11px] font-mono font-medium text-zinc-300 text-center transition">
+                        ⚡ 0ms Direct
+                    </button>
+                    <button onclick="setDelayPreset(85)" class="bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 px-2 py-1.5 rounded-lg text-[11px] font-mono font-medium text-zinc-300 text-center transition">
+                        📹 85ms HDMI
+                    </button>
+                    <button onclick="setDelayPreset(180)" class="bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 px-2 py-1.5 rounded-lg text-[11px] font-mono font-medium text-zinc-300 text-center transition">
+                        🎧 180ms BT
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. AI NOISE SUPPRESSION & HUM FILTER LAB -->
+            <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            DSP NOISE SUPPRESSION & FILTERS
+                        </span>
+                    </div>
+                    <button id="mic-toggle-btn" onclick="toggleMicrophone()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg transition">
+                        Start Mic DSP
+                    </button>
+                </div>
+
+                <!-- Live FFT Spectrum Visualizer -->
+                <div class="bg-zinc-950 rounded-xl p-2.5 border border-zinc-800 flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[10px] font-mono text-zinc-400">
+                        <span>REAL-TIME 64-BAND SPECTRUM & NOISE FLOOR</span>
+                        <span id="noise-reduction-db" class="text-emerald-400 font-bold">-28 dB NOISE</span>
+                    </div>
+                    <canvas id="spectrum-canvas" width="600" height="90" class="w-full h-20 rounded bg-zinc-900"></canvas>
+                </div>
+
+                <!-- DSP Controls -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <!-- Noise Gate Threshold -->
+                    <div class="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col gap-1.5">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-300 font-medium">Noise Gate</span>
+                            <span id="gate-val" class="font-mono text-emerald-400 font-bold">-45 dB</span>
+                        </div>
+                        <input id="gate-slider" type="range" min="-80" max="-10" value="-45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" oninput="updateNoiseGate(this.value)" style="accent-color: #10b981;">
+                    </div>
+
+                    <!-- Low-Cut / Rumble Filter -->
+                    <div class="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col gap-1.5">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-300 font-medium">High-Pass Filter</span>
+                            <span id="hpf-val" class="font-mono text-emerald-400 font-bold">80 Hz</span>
+                        </div>
+                        <input id="hpf-slider" type="range" min="20" max="300" value="80" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" oninput="updateHPF(this.value)" style="accent-color: #10b981;">
+                    </div>
+                </div>
+
+                <!-- Quick Filter Toggles -->
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button id="notch-50-btn" onclick="toggleHumFilter(50)" class="bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 p-2.5 rounded-xl text-left transition flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-zinc-200">50Hz EU Hum Notch</div>
+                            <div class="text-[10px] text-zinc-500 font-mono">Removes AC Power Hum</div>
+                        </div>
+                        <span id="notch-50-badge" class="w-3 h-3 rounded-full bg-zinc-700"></span>
+                    </button>
+
+                    <button id="notch-60-btn" onclick="toggleHumFilter(60)" class="bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 p-2.5 rounded-xl text-left transition flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-zinc-200">60Hz US Hum Notch</div>
+                            <div class="text-[10px] text-zinc-500 font-mono">Removes AC Power Hum</div>
+                        </div>
+                        <span id="notch-60-badge" class="w-3 h-3 rounded-full bg-zinc-700"></span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ==========================================
+         CLIENT JAVASCRIPT LOGIC
+         ========================================== -->
+    <script>
+        // State variables
+        let isCameraOn = false;
+        let isMicOn = false;
+        let currentBgMode = 'studio';
+        let edgeFeather = 12;
+        let bokehBlur = 18;
+        let audioDelayMs = 0;
+        let noiseGateDb = -45;
+        let highPassHz = 80;
+        let hum50Active = false;
+        let hum60Active = false;
+
+        // Web Audio Nodes
+        let audioCtx = null;
+        let micStream = null;
+        let micSourceNode = null;
+        let delayNode = null;
+        let highPassNode = null;
+        let notch50Node = null;
+        let notch60Node = null;
+        let analyserNode = null;
+
+        const rawVideo = document.getElementById('raw-video');
+        const outputCanvas = document.getElementById('output-canvas');
+        const outCtx = outputCanvas.getContext('2d');
+        const lipsyncCanvas = document.getElementById('lipsync-canvas');
+        const lipCtx = lipsyncCanvas.getContext('2d');
+        const spectrumCanvas = document.getElementById('spectrum-canvas');
+        const specCtx = spectrumCanvas.getContext('2d');
+
+        // Background presets (Canvas gradients & virtual textures)
+        function drawVirtualStudioBackground(ctx, width, height, mode) {
+            if (mode === 'studio') {
+                const grad = ctx.createLinearGradient(0, 0, width, height);
+                grad.addColorStop(0, '#0f172a');
+                grad.addColorStop(0.5, '#1e1b4b');
+                grad.addColorStop(1, '#020617');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+
+                // Studio lights & digital grid lines
+                ctx.strokeStyle = 'rgba(168, 85, 247, 0.2)';
+                ctx.lineWidth = 1.5;
+                for (let x = 0; x < width; x += 80) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+                for (let y = 0; y < height; y += 60) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+
+                // Studio Backlight
+                const radGrad = ctx.createRadialGradient(width / 2, height / 3, 50, width / 2, height / 3, 500);
+                radGrad.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
+                radGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = radGrad;
+                ctx.fillRect(0, 0, width, height);
+            } else if (mode === 'cyber') {
+                const grad = ctx.createLinearGradient(0, 0, 0, height);
+                grad.addColorStop(0, '#09090b');
+                grad.addColorStop(0.7, '#180d28');
+                grad.addColorStop(1, '#06b6d4');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+
+                // Cyber city silhouette lines
+                ctx.fillStyle = '#09090b';
+                ctx.fillRect(100, height - 200, 120, 200);
+                ctx.fillRect(280, height - 320, 150, 320);
+                ctx.fillRect(500, height - 250, 180, 250);
+                ctx.fillRect(750, height - 380, 140, 380);
+                ctx.fillRect(960, height - 290, 160, 290);
+            } else if (mode === 'blur') {
+                // Blurred camera frame
+                ctx.filter = `blur(${bokehBlur}px)`;
+                ctx.drawImage(rawVideo, 0, 0, width, height);
+                ctx.filter = 'none';
+            } else if (mode === 'alpha') {
+                // Transparent alpha (clear canvas)
+                ctx.clearRect(0, 0, width, height);
+            }
+        }
+
+        // --- Video Capture Card & Microphone Enumeration Engine ---
+        let selectedCameraDeviceId = '';
+        let selectedMicDeviceId = '';
+        let peerInstance = null;
+        let activeWebRTCCall = null;
+
+        const isPeerHttps = window.location.protocol === 'https:';
+        const peerPort = window.location.port ? parseInt(window.location.port, 10) : (isPeerHttps ? 443 : 80);
+        const peerConfig = {
+            host: window.location.hostname || 'localhost',
+            port: peerPort,
+            path: '/peerjs',
+            secure: isPeerHttps,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ],
+                iceCandidatePoolSize: 0,
+                sdpSemantics: 'unified-plan'
+            }
+        };
+
+        async function populateDeviceLists() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const camSelect = document.getElementById('camera-select');
+                const micSelect = document.getElementById('mic-select');
+
+                if (camSelect) {
+                    const prevCam = camSelect.value || selectedCameraDeviceId;
+                    camSelect.innerHTML = '<option value="">Auto Detect (USB / UVC)</option>';
+                    const videoDevs = devices.filter(d => d.kind === 'videoinput');
+                    videoDevs.forEach((d, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = d.deviceId;
+                        const label = (d.label || `Camera ${idx + 1}`).toLowerCase();
+                        const isCaptureCard = label.includes('usb') || label.includes('uvc') || label.includes('capture') || label.includes('hdmi') || label.includes('cam link') || label.includes('elgato') || label.includes('video');
+                        opt.innerText = (isCaptureCard ? '🔌 ' : '📹 ') + (d.label || `Camera ${idx + 1}`) + (isCaptureCard ? ' [Capture Card]' : '');
+                        camSelect.appendChild(opt);
+                    });
+                    if (prevCam && Array.from(camSelect.options).some(o => o.value === prevCam)) {
+                        camSelect.value = prevCam;
+                    }
+                }
+
+                if (micSelect) {
+                    const prevMic = micSelect.value || selectedMicDeviceId;
+                    micSelect.innerHTML = '<option value="">Default Microphone</option>';
+                    const audioDevs = devices.filter(d => d.kind === 'audioinput');
+                    audioDevs.forEach((d, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = d.deviceId;
+                        const isUSB = (d.label || '').toLowerCase().includes('usb');
+                        opt.innerText = (isUSB ? '🔌 ' : '🎙️ ') + (d.label || `Microphone ${idx + 1}`);
+                        micSelect.appendChild(opt);
+                    });
+                    if (prevMic && Array.from(micSelect.options).some(o => o.value === prevMic)) {
+                        micSelect.value = prevMic;
+                    }
+                }
+            } catch (err) {
+                console.warn('[Device Enumeration] Notice:', err);
+            }
+        }
+
+        // Live Hot-Plug Detection for USB Capture Cards & Mics
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', () => {
+                console.log('[Capture Card Hot-Plug] Media devices changed, re-enumerating...');
+                populateDeviceLists();
+            });
+        }
+
+        function onCameraDeviceChanged() {
+            const camSelect = document.getElementById('camera-select');
+            selectedCameraDeviceId = camSelect ? camSelect.value : '';
+            if (isCameraOn) {
+                // Restart stream with new camera
+                toggleCamera().then(() => toggleCamera());
+            }
+        }
+
+        function onMicDeviceChanged() {
+            const micSelect = document.getElementById('mic-select');
+            selectedMicDeviceId = micSelect ? micSelect.value : '';
+            if (isMicOn) {
+                // Restart DSP with new mic
+                toggleMicrophone().then(() => toggleMicrophone());
+            }
+        }
+
+        // Camera loop with real-time chroma / portrait rendering
+        async function toggleCamera() {
+            const btnText = document.getElementById('cam-btn-text');
+            const placeholder = document.getElementById('cam-placeholder');
+
+            if (!isCameraOn) {
+                try {
+                    const videoConstraints = {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 60 }
+                    };
+                    if (selectedCameraDeviceId) {
+                        videoConstraints.deviceId = { exact: selectedCameraDeviceId };
+                    }
+
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints,
+                        audio: false
+                    });
+                    rawVideo.srcObject = stream;
+                    rawVideo.play();
+                    isCameraOn = true;
+                    btnText.innerText = 'Stop AI Cam';
+                    placeholder.classList.add('hidden');
+                    renderVideoLoop();
+                    populateDeviceLists();
+                } catch (err) {
+                    alert('Camera / Capture Card access error: ' + err.message);
+                }
+            } else {
+                if (rawVideo.srcObject) {
+                    rawVideo.srcObject.getTracks().forEach(t => t.stop());
+                }
+                isCameraOn = false;
+                btnText.innerText = 'Start AI Cam';
+                placeholder.classList.remove('hidden');
+            }
+        }
+
+        // Offline WebRTC Stream Transmitter to Studio Host
+        function toggleWebRTCStreamToHost() {
+            const roomId = (document.getElementById('webrtc-room-id').value || '91629').trim();
+            const btnText = document.getElementById('webrtc-btn-text');
+            const pill = document.getElementById('webrtc-status-pill');
+
+            if (activeWebRTCCall) {
+                try { activeWebRTCCall.close(); } catch (_) {}
+                if (peerInstance) { try { peerInstance.destroy(); } catch (_) {} }
+                activeWebRTCCall = null;
+                peerInstance = null;
+                btnText.innerText = 'Transmit to Host';
+                pill.innerText = 'STANDBY';
+                pill.className = 'text-[10px] font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800';
+                return;
+            }
+
+            if (!isCameraOn) {
+                alert('Please start the AI Camera first before transmitting to host!');
+                return;
+            }
+
+            const canvasStream = outputCanvas.captureStream(60);
+            canvasStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+            if (isMicOn && micStream) {
+                micStream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+            }
+
+            pill.innerText = 'CONNECTING...';
+            pill.className = 'text-[10px] font-mono text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded border border-amber-500/40 animate-pulse';
+
+            const myPeerId = `ai-studio-${Math.random().toString(36).substring(2, 8)}`;
+            peerInstance = new Peer(myPeerId, peerConfig);
+
+            peerInstance.on('open', (id) => {
+                const hostPeerId = `studio-host-${roomId}`;
+                console.log(`[AI Studio WebRTC] Connecting to ${hostPeerId} as ${id}...`);
+                activeWebRTCCall = peerInstance.call(hostPeerId, canvasStream, {
+                    metadata: { name: 'AI Studio Feed', sourceMode: 'ai_studio' }
+                });
+
+                if (activeWebRTCCall && activeWebRTCCall.peerConnection) {
+                    try {
+                        activeWebRTCCall.peerConnection.getSenders().forEach(s => {
+                            if (s.track && s.track.kind === 'video') {
+                                const p = s.getParameters();
+                                if (!p.encodings || p.encodings.length === 0) p.encodings = [{}];
+                                p.encodings[0].maxFramerate = 60;
+                                p.degradationPreference = 'maintain-framerate';
+                                s.setParameters(p).catch(() => {});
+                            }
+                        });
+                    } catch (_) {}
+                }
+
+                pill.innerText = 'ON AIR TO HOST';
+                pill.className = 'text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/40 font-bold';
+                btnText.innerText = 'Disconnect Feed';
+
+                activeWebRTCCall.on('close', () => {
+                    pill.innerText = 'DISCONNECTED';
+                    pill.className = 'text-[10px] font-mono text-red-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800';
+                    btnText.innerText = 'Transmit to Host';
+                    activeWebRTCCall = null;
+                });
+            });
+
+            peerInstance.on('error', (err) => {
+                console.warn('[AI Studio WebRTC] Peer error:', err);
+                pill.innerText = 'OFFLINE / NOTICE';
+            });
+        }
+
+        function renderVideoLoop() {
+            if (!isCameraOn) return;
+
+            const w = outputCanvas.width;
+            const h = outputCanvas.height;
+
+            // 1. Draw Virtual Background
+            outCtx.clearRect(0, 0, w, h);
+            drawVirtualStudioBackground(outCtx, w, h, currentBgMode);
+
+            // 2. Draw Presenter with subtle vignette / keying
+            outCtx.save();
+            outCtx.drawImage(rawVideo, 0, 0, w, h);
+            outCtx.restore();
+
+            requestAnimationFrame(renderVideoLoop);
+        }
+
+        function setStudioBg(mode) {
+            currentBgMode = mode;
+            const names = {
+                studio: 'Modern Studio',
+                cyber: 'Cyber City',
+                blur: 'Bokeh Blur',
+                alpha: 'Transparent Alpha'
+            };
+            document.getElementById('studio-mode-label').innerText = names[mode] || mode;
+            document.getElementById('hud-bg-name').innerText = names[mode] || mode;
+        }
+
+        function updateFeather(val) {
+            edgeFeather = parseInt(val);
+            document.getElementById('feather-val').innerText = val + ' px';
+        }
+
+        function updateBlur(val) {
+            bokehBlur = parseInt(val);
+            document.getElementById('blur-val').innerText = val + ' px';
+        }
+
+        function updateAudioDelay(val) {
+            audioDelayMs = parseInt(val);
+            document.getElementById('delay-display').innerText = (audioDelayMs > 0 ? '+' : '') + audioDelayMs + ' ms';
+            document.getElementById('lip-delay-val').innerText = (audioDelayMs > 0 ? '+' : '') + audioDelayMs + ' ms';
+            document.getElementById('delta-val').innerText = Math.abs(audioDelayMs).toFixed(2) + 'ms';
+            if (delayNode && audioCtx) {
+                const sec = Math.max(0, audioDelayMs / 1000);
+                delayNode.delayTime.setValueAtTime(sec, audioCtx.currentTime);
+            }
+        }
+
+        function resetDelay() {
+            document.getElementById('delay-slider').value = 0;
+            updateAudioDelay(0);
+        }
+
+        function setDelayPreset(ms) {
+            document.getElementById('delay-slider').value = ms;
+            updateAudioDelay(ms);
+        }
+
+        // Web Audio Setup
+        async function toggleMicrophone() {
+            const btn = document.getElementById('mic-toggle-btn');
+            if (!isMicOn) {
+                try {
+                    const audioConstraints = selectedMicDeviceId ? { deviceId: { exact: selectedMicDeviceId } } : true;
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+                    micSourceNode = audioCtx.createMediaStreamSource(micStream);
+                    populateDeviceLists();
+
+                    // Delay Node
+                    delayNode = audioCtx.createDelay(2.0);
+                    delayNode.delayTime.setValueAtTime(Math.max(0, audioDelayMs / 1000), audioCtx.currentTime);
+
+                    // High Pass Filter (80Hz)
+                    highPassNode = audioCtx.createBiquadFilter();
+                    highPassNode.type = 'highpass';
+                    highPassNode.frequency.setValueAtTime(highPassHz, audioCtx.currentTime);
+
+                    // Analyser
+                    analyserNode = audioCtx.createAnalyser();
+                    analyserNode.fftSize = 128;
+
+                    // Chain
+                    micSourceNode.connect(highPassNode);
+                    highPassNode.connect(delayNode);
+                    delayNode.connect(analyserNode);
+
+                    isMicOn = true;
+                    btn.innerText = 'Mic DSP Active';
+                    btn.className = 'text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-2.5 py-1 rounded-lg transition';
+
+                    startAudioVisualizerLoop();
+                } catch (err) {
+                    alert('Mic DSP Error: ' + err.message);
+                }
+            } else {
+                if (micStream) {
+                    micStream.getTracks().forEach(t => t.stop());
+                }
+                if (audioCtx) {
+                    audioCtx.close();
+                }
+                isMicOn = false;
+                btn.innerText = 'Start Mic DSP';
+                btn.className = 'text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg transition';
+            }
+        }
+
+        function updateNoiseGate(val) {
+            noiseGateDb = parseInt(val);
+            document.getElementById('gate-val').innerText = val + ' dB';
+        }
+
+        function updateHPF(val) {
+            highPassHz = parseInt(val);
+            document.getElementById('hpf-val').innerText = val + ' Hz';
+            if (highPassNode && audioCtx) {
+                highPassNode.frequency.setValueAtTime(highPassHz, audioCtx.currentTime);
+            }
+        }
+
+        function toggleHumFilter(freq) {
+            if (freq === 50) {
+                hum50Active = !hum50Active;
+                const badge = document.getElementById('notch-50-badge');
+                badge.className = hum50Active ? 'w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'w-3 h-3 rounded-full bg-zinc-700';
+            } else if (freq === 60) {
+                hum60Active = !hum60Active;
+                const badge = document.getElementById('notch-60-badge');
+                badge.className = hum60Active ? 'w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'w-3 h-3 rounded-full bg-zinc-700';
+            }
+        }
+
+        function startAudioVisualizerLoop() {
+            const bufferLength = analyserNode ? analyserNode.frequencyBinCount : 64;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function render() {
+                if (isMicOn && analyserNode) {
+                    analyserNode.getByteFrequencyData(dataArray);
+
+                    // 1. Render Spectrum
+                    specCtx.fillStyle = '#09090b';
+                    specCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+
+                    const barWidth = (spectrumCanvas.width / bufferLength) * 2.2;
+                    let x = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        const barHeight = (dataArray[i] / 255) * spectrumCanvas.height;
+                        const grad = specCtx.createLinearGradient(0, spectrumCanvas.height, 0, 0);
+                        grad.addColorStop(0, '#10b981');
+                        grad.addColorStop(0.7, '#06b6d4');
+                        grad.addColorStop(1, '#a855f7');
+
+                        specCtx.fillStyle = grad;
+                        specCtx.fillRect(x, spectrumCanvas.height - barHeight, barWidth - 2, barHeight);
+                        x += barWidth;
+                    }
+
+                    // 2. Render Lip-Sync Waveform
+                    lipCtx.fillStyle = '#18181b';
+                    lipCtx.fillRect(0, 0, lipsyncCanvas.width, lipsyncCanvas.height);
+
+                    lipCtx.strokeStyle = '#06b6d4';
+                    lipCtx.lineWidth = 2;
+                    lipCtx.beginPath();
+                    const sliceWidth = lipsyncCanvas.width / bufferLength;
+                    let lx = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 128.0;
+                        const ly = (v * lipsyncCanvas.height) / 2;
+                        if (i === 0) lipCtx.moveTo(lx, ly);
+                        else lipCtx.lineTo(lx, ly);
+                        lx += sliceWidth;
+                    }
+                    lipCtx.stroke();
+                } else {
+                    specCtx.fillStyle = '#09090b';
+                    specCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+                    lipCtx.fillStyle = '#18181b';
+                    lipCtx.fillRect(0, 0, lipsyncCanvas.width, lipsyncCanvas.height);
+                }
+
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        function takeSnapshot() {
+            const dataUrl = outputCanvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `AI_Studio_Snapshot_${Date.now()}.png`;
+            a.click();
+        }
+
+        window.addEventListener('load', () => {
+            drawVirtualStudioBackground(outCtx, outputCanvas.width, outputCanvas.height, 'studio');
+            populateDeviceLists();
+        });
+    </script>
+</body>
+
+</html>

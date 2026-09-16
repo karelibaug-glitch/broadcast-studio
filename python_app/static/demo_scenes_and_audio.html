@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROTOTYPE: Multi-Scene Switcher & Live Audio Mixer</title>
+    <link rel="stylesheet" href="css/tailwind.min.css">
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #09090b;
+            color: #f4f4f5;
+            user-select: none;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom Faders */
+        input[type=range].fader-vertical {
+            writing-mode: vertical-lr;
+            direction: rtl;
+            width: 8px;
+            height: 140px;
+            accent-color: #3b82f6;
+            cursor: pointer;
+        }
+        .checkerboard {
+            background-image: linear-gradient(45deg, #18181b 25%, transparent 25%),
+                linear-gradient(-45deg, #18181b 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #18181b 75%),
+                linear-gradient(-45deg, transparent 75%, #18181b 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            background-color: #0d0d11;
+        }
+        .scene-card.active {
+            border-color: #ef4444;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);
+            background: linear-gradient(180deg, rgba(239, 68, 68, 0.1) 0%, rgba(24, 24, 27, 0.8) 100%);
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-6 min-h-screen flex flex-col gap-4">
+
+    <!-- Top Navigation & Status -->
+    <header class="flex flex-wrap justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-xl gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-lg">
+                🎬
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base font-bold text-white tracking-wide">Studio Feature Prototype</h1>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/60 text-blue-300 border border-blue-700 font-mono font-bold">INTERACTIVE SAMPLE</span>
+                </div>
+                <p class="text-xs text-zinc-400">Previewing: <b>Multi-Scene Switcher</b> & <b>Master Audio Mixer with Auto-Ducking</b></p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 font-mono text-xs">
+            <div class="bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-2 text-zinc-300">
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                <span>OUT: <b id="out-fps" class="text-emerald-400">60.0</b> FPS</span>
+                <span class="text-zinc-600">|</span>
+                <span><b id="out-bitrate" class="text-blue-400">4,500</b> kbps</span>
+            </div>
+            <div class="bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+                <span>🔴 ON AIR</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 min-h-0">
+
+        <!-- LEFT/CENTER: Program Monitor & Scene Dock (8 Cols) -->
+        <div class="lg:col-span-8 flex flex-col gap-4">
+
+            <!-- Program Monitor Area -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                        <h2 class="text-xs font-bold text-zinc-200 uppercase tracking-wider">Program Monitor (Master Output)</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[11px] text-zinc-400">Active Scene:</span>
+                        <span id="active-scene-badge" class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-red-950/60 text-red-300 border border-red-800/80 font-mono">
+                            Scene 1: Solo Host Cam
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Canvas Preview Container (16:9) -->
+                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden checkerboard border border-zinc-700/80 shadow-2xl">
+                    <canvas id="program-canvas" width="1920" height="1080" class="w-full h-full object-contain"></canvas>
+                    
+                    <!-- Transition Overlay Flash -->
+                    <div id="transition-flash" class="absolute inset-0 bg-white/20 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+                </div>
+            </div>
+
+            <!-- SCENE MULTI-VIEW DOCK -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl">
+                <div class="flex flex-wrap justify-between items-center gap-2 border-b border-zinc-800 pb-2">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider">🎬 Multi-Scene Switcher Deck</h3>
+                        <span class="text-[10px] text-zinc-500">(Click a scene or press keys 1, 2, 3, 4)</span>
+                    </div>
+
+                    <!-- Transition Style Selector -->
+                    <div class="flex items-center gap-2">
+                        <label class="text-[11px] text-zinc-400 font-medium">Transition:</label>
+                        <select id="transition-select" class="bg-zinc-950 border border-zinc-800 text-xs text-blue-400 font-semibold rounded-lg px-2.5 py-1 focus:border-blue-500 outline-none">
+                            <option value="fade" selected>Cross-Dissolve (300ms)</option>
+                            <option value="slide">Slide Left (300ms)</option>
+                            <option value="zoom">Zoom Dynamic (300ms)</option>
+                            <option value="cut">Instant Cut (0ms)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 4 Interactive Scene Cards -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    
+                    <!-- Scene 1: Solo Cam -->
+                    <div onclick="switchScene(1)" id="scene-card-1"
+                        class="scene-card active bg-zinc-950/80 border border-zinc-800 hover:border-zinc-600 rounded-xl p-3 flex flex-col gap-2 cursor-pointer transition-all">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[11px] font-bold text-zinc-200">[ 1 ] Solo Host</span>
+                            <span class="text-[9px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-zinc-400">KEY 1</span>
+                        </div>
+                        <div class="w-full aspect-video bg-zinc-900 rounded-lg border border-zinc-800 relative flex items-center justify-center overflow-hidden">
+                            <div class="w-12 h-12 rounded-full bg-blue-600/30 border border-blue-400 flex items-center justify-center text-lg">👤</div>
+                            <div class="absolute bottom-1 left-1 bg-zinc-950/90 text-[8px] px-1 rounded text-zinc-300">Host (100%)</div>
+                        </div>
+                        <span class="text-[10px] text-zinc-400 truncate">Full Webcam & Mic</span>
+                    </div>
+
+                    <!-- Scene 2: Screen + PIP -->
+                    <div onclick="switchScene(2)" id="scene-card-2"
+                        class="scene-card bg-zinc-950/80 border border-zinc-800 hover:border-zinc-600 rounded-xl p-3 flex flex-col gap-2 cursor-pointer transition-all">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[11px] font-bold text-zinc-200">[ 2 ] Screen + PIP</span>
+                            <span class="text-[9px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-zinc-400">KEY 2</span>
+                        </div>
+                        <div class="w-full aspect-video bg-zinc-900 rounded-lg border border-zinc-800 relative flex items-center justify-center overflow-hidden">
+                            <div class="text-xs text-zinc-500 font-mono font-bold">🖥️ SCREEN (100%)</div>
+                            <div class="absolute bottom-1 right-1 w-6 h-4 bg-blue-600/50 border border-blue-400 rounded flex items-center justify-center text-[7px] text-white">👤 PIP</div>
+                        </div>
+                        <span class="text-[10px] text-zinc-400 truncate">Screen Share + Corner PIP</span>
+                    </div>
+
+                    <!-- Scene 3: Split Cam Interview -->
+                    <div onclick="switchScene(3)" id="scene-card-3"
+                        class="scene-card bg-zinc-950/80 border border-zinc-800 hover:border-zinc-600 rounded-xl p-3 flex flex-col gap-2 cursor-pointer transition-all">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[11px] font-bold text-zinc-200">[ 3 ] Split Interview</span>
+                            <span class="text-[9px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-zinc-400">KEY 3</span>
+                        </div>
+                        <div class="w-full aspect-video bg-zinc-900 rounded-lg border border-zinc-800 relative flex items-center justify-between p-1 overflow-hidden">
+                            <div class="w-[48%] h-full bg-blue-600/30 border border-blue-400/50 rounded flex items-center justify-center text-xs">👤 Host</div>
+                            <div class="w-[48%] h-full bg-emerald-600/30 border border-emerald-400/50 rounded flex items-center justify-center text-xs">👥 Guest</div>
+                        </div>
+                        <span class="text-[10px] text-zinc-400 truncate">Side-by-Side Dual Cam</span>
+                    </div>
+
+                    <!-- Scene 4: BRB / Intermission -->
+                    <div onclick="switchScene(4)" id="scene-card-4"
+                        class="scene-card bg-zinc-950/80 border border-zinc-800 hover:border-zinc-600 rounded-xl p-3 flex flex-col gap-2 cursor-pointer transition-all">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[11px] font-bold text-zinc-200">[ 4 ] Intermission</span>
+                            <span class="text-[9px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-zinc-400">KEY 4</span>
+                        </div>
+                        <div class="w-full aspect-video bg-zinc-900 rounded-lg border border-zinc-800 relative flex flex-col items-center justify-center p-1 overflow-hidden bg-gradient-to-tr from-purple-950/60 to-blue-950/60">
+                            <div class="text-[9px] font-bold text-purple-300 animate-pulse">⏳ BE RIGHT BACK</div>
+                            <div class="text-[8px] text-zinc-400 font-mono">Stream Starts in 02:00</div>
+                        </div>
+                        <span class="text-[10px] text-zinc-400 truncate">Banner + Countdown</span>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT: PRO MASTER AUDIO MIXER (4 Cols) -->
+        <div class="lg:col-span-4 flex flex-col gap-4">
+
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-4 shadow-2xl h-full">
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-2.5">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>🎚️ Master Audio Mixer</span>
+                        </h2>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">60 FPS DSP</span>
+                </div>
+
+                <!-- Auto-Ducking Live Notice & Interactive Trigger Button -->
+                <div class="bg-blue-950/30 border border-blue-800/40 rounded-xl p-3 flex flex-col gap-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] font-bold text-blue-300">🎙️ Smart Auto-Ducking</span>
+                        <span id="ducking-badge" class="text-[9px] px-2 py-0.5 rounded font-mono bg-zinc-800 text-zinc-500 uppercase font-bold">READY</span>
+                    </div>
+                    <p class="text-[10px] text-zinc-400 leading-relaxed">
+                        When the host talks into the mic, background music automatically lowers by <b>75% (-12dB)</b> with smooth sidechain attack/release.
+                    </p>
+                    <button type="button" id="talk-btn"
+                        onmousedown="startTalking()" onmouseup="stopTalking()" onmouseleave="stopTalking()"
+                        class="w-full bg-blue-600 hover:bg-blue-500 active:bg-emerald-600 text-white font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-lg">
+                        <span>🎙️ Click & Hold to Talk (Test Ducking)</span>
+                    </button>
+                </div>
+
+                <!-- Channel Strips (Mic, Screen, Video, BGM, Master) -->
+                <div class="grid grid-cols-5 gap-2 bg-zinc-950/90 border border-zinc-800/80 rounded-xl p-3 flex-1">
+                    
+                    <!-- Channel 1: Host Mic -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-[10px] font-bold text-zinc-300 truncate">🎤 MIC</span>
+                        <div class="flex gap-1 items-center justify-center h-[140px]">
+                            <!-- Left / Right VU Canvas -->
+                            <canvas id="vu-mic" width="10" height="130" class="rounded bg-zinc-900 border border-zinc-800"></canvas>
+                            <input type="range" min="0" max="1.5" step="0.05" value="1.0" class="fader-vertical" oninput="channels.mic.vol = parseFloat(this.value)">
+                        </div>
+                        <button onclick="toggleMute('mic')" id="mute-mic" class="text-[10px] font-bold w-6 h-6 rounded bg-zinc-800 text-zinc-400 hover:text-white">M</button>
+                    </div>
+
+                    <!-- Channel 2: Screen Audio -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-[10px] font-bold text-zinc-300 truncate">🖥️ DESK</span>
+                        <div class="flex gap-1 items-center justify-center h-[140px]">
+                            <canvas id="vu-screen" width="10" height="130" class="rounded bg-zinc-900 border border-zinc-800"></canvas>
+                            <input type="range" min="0" max="1.5" step="0.05" value="0.8" class="fader-vertical" oninput="channels.screen.vol = parseFloat(this.value)">
+                        </div>
+                        <button onclick="toggleMute('screen')" id="mute-screen" class="text-[10px] font-bold w-6 h-6 rounded bg-zinc-800 text-zinc-400 hover:text-white">M</button>
+                    </div>
+
+                    <!-- Channel 3: Video Player -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-[10px] font-bold text-zinc-300 truncate">🎬 VID</span>
+                        <div class="flex gap-1 items-center justify-center h-[140px]">
+                            <canvas id="vu-video" width="10" height="130" class="rounded bg-zinc-900 border border-zinc-800"></canvas>
+                            <input type="range" min="0" max="1.5" step="0.05" value="1.0" class="fader-vertical" oninput="channels.video.vol = parseFloat(this.value)">
+                        </div>
+                        <button onclick="toggleMute('video')" id="mute-video" class="text-[10px] font-bold w-6 h-6 rounded bg-zinc-800 text-zinc-400 hover:text-white">M</button>
+                    </div>
+
+                    <!-- Channel 4: Background Music (BGM) -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-[10px] font-bold text-blue-400 truncate">🎵 BGM</span>
+                        <div class="flex gap-1 items-center justify-center h-[140px]">
+                            <canvas id="vu-bgm" width="10" height="130" class="rounded bg-zinc-900 border border-zinc-800"></canvas>
+                            <input type="range" min="0" max="1.5" step="0.05" value="0.85" class="fader-vertical" oninput="channels.bgm.vol = parseFloat(this.value)">
+                        </div>
+                        <button onclick="toggleMute('bgm')" id="mute-bgm" class="text-[10px] font-bold w-6 h-6 rounded bg-zinc-800 text-zinc-400 hover:text-white">M</button>
+                    </div>
+
+                    <!-- Channel 5: Master Output Bus -->
+                    <div class="flex flex-col items-center gap-2 border-l border-zinc-800 pl-1.5">
+                        <span class="text-[10px] font-bold text-red-400 truncate">🔊 MST</span>
+                        <div class="flex gap-1 items-center justify-center h-[140px]">
+                            <canvas id="vu-master" width="12" height="130" class="rounded bg-zinc-900 border border-zinc-800"></canvas>
+                            <input type="range" min="0" max="1.5" step="0.05" value="1.0" class="fader-vertical accent-red-500" oninput="channels.master.vol = parseFloat(this.value)">
+                        </div>
+                        <span class="text-[9px] font-mono text-zinc-400 font-bold">0 dB</span>
+                    </div>
+
+                </div>
+
+                <!-- Peak Limiter Info -->
+                <div class="flex justify-between items-center text-[10px] text-zinc-500 font-mono px-1">
+                    <span>Peak Limiter: <b class="text-emerald-400">ACTIVE</b></span>
+                    <span>Sample Rate: <b>44.1 kHz</b></span>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Interactive Prototype JavaScript Logic -->
+    <script>
+        // ==========================================
+        // 1. SCENE ENGINE & ANIMATION COMPOSITOR
+        // ==========================================
+        let activeSceneId = 1;
+        let isTransitioning = false;
+        let transitionProgress = 1.0;
+        let transitionDurationMs = 300;
+        let transitionType = 'fade';
+        let prevSceneId = 1;
+
+        const scenes = {
+            1: { name: 'Scene 1: Solo Host Cam', badge: 'Solo Host (100%)' },
+            2: { name: 'Scene 2: Screen + PIP Cam', badge: 'Screen + Host PIP' },
+            3: { name: 'Scene 3: Split Cam Interview', badge: 'Interview Split-Screen' },
+            4: { name: 'Scene 4: Intermission / BRB', badge: 'Intermission Countdown' }
+        };
+
+        const canvas = document.getElementById('program-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Scene Layer Layout Configurations
+        function drawSceneLayout(sceneId, alpha = 1.0, offsetX = 0, scale = 1.0) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(offsetX, 0);
+
+            if (sceneId === 1) {
+                // SCENE 1: SOLO HOST
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, 1920, 1080);
+
+                // Host Camera
+                ctx.fillStyle = '#1e293b';
+                ctx.roundRect(160, 90, 1600, 900, 24);
+                ctx.fill();
+
+                // Avatar / Simulated Host Video
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(960, 500, 180, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 70px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('👤 HOST CAM (FULL)', 960, 500);
+
+                // Lower-Third
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+                ctx.roundRect(240, 840, 600, 90, 16);
+                ctx.fill();
+                ctx.fillStyle = '#60a5fa';
+                ctx.font = 'bold 32px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText('Host Broadcast Streamer', 280, 880);
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '20px Inter, sans-serif';
+                ctx.fillText('@livehost • Pro Studio 4K', 280, 912);
+
+            } else if (sceneId === 2) {
+                // SCENE 2: SCREEN SHARE + PIP
+                ctx.fillStyle = '#020617';
+                ctx.fillRect(0, 0, 1920, 1080);
+
+                // Main Screen Share
+                ctx.fillStyle = '#0f172a';
+                ctx.roundRect(80, 60, 1760, 960, 20);
+                ctx.fill();
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                ctx.fillStyle = '#38bdf8';
+                ctx.font = 'bold 64px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🖥️ LIVE SCREEN SHARE (PRESENTATION)', 960, 480);
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '28px Inter, sans-serif';
+                ctx.fillText('1080p60 Ultra Low-Latency Native Capture', 960, 550);
+
+                // Picture-in-Picture (PIP) Camera in bottom right
+                ctx.fillStyle = '#1e293b';
+                ctx.roundRect(1420, 680, 420, 240, 16);
+                ctx.fill();
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.fillStyle = '#60a5fa';
+                ctx.font = 'bold 24px Inter, sans-serif';
+                ctx.fillText('👤 HOST (PIP)', 1630, 800);
+
+            } else if (sceneId === 3) {
+                // SCENE 3: SPLIT CAM INTERVIEW
+                ctx.fillStyle = '#09090b';
+                ctx.fillRect(0, 0, 1920, 1080);
+
+                // Left Host Box
+                ctx.fillStyle = '#1e293b';
+                ctx.roundRect(80, 120, 840, 840, 24);
+                ctx.fill();
+                ctx.fillStyle = '#3b82f6';
+                ctx.font = 'bold 50px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('👤 HOST (CAMERA 1)', 500, 540);
+
+                // Right Guest Box
+                ctx.fillStyle = '#1e293b';
+                ctx.roundRect(1000, 120, 840, 840, 24);
+                ctx.fill();
+                ctx.fillStyle = '#10b981';
+                ctx.font = 'bold 50px Inter, sans-serif';
+                ctx.fillText('👥 GUEST (REMOTE P2P)', 1420, 540);
+
+            } else if (sceneId === 4) {
+                // SCENE 4: INTERMISSION / BRB
+                const grad = ctx.createLinearGradient(0, 0, 1920, 1080);
+                grad.addColorStop(0, '#2e1065');
+                grad.addColorStop(1, '#0f172a');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 1920, 1080);
+
+                ctx.fillStyle = '#c084fc';
+                ctx.font = 'bold 90px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('⏳ STREAM WILL RESUME SHORTLY', 960, 480);
+                
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = 'bold 44px Inter, sans-serif';
+                ctx.fillText('Be Right Back • Playing Background Music', 960, 580);
+            }
+
+            ctx.restore();
+        }
+
+        let transitionStartTime = 0;
+
+        function renderFrame(now) {
+            ctx.clearRect(0, 0, 1920, 1080);
+
+            if (isTransitioning) {
+                const elapsed = now - transitionStartTime;
+                const t = Math.min(1.0, elapsed / transitionDurationMs);
+
+                if (transitionType === 'fade') {
+                    // Cross dissolve
+                    drawSceneLayout(prevSceneId, 1.0 - t);
+                    drawSceneLayout(activeSceneId, t);
+                } else if (transitionType === 'slide') {
+                    // Slide left
+                    drawSceneLayout(prevSceneId, 1.0, -t * 1920);
+                    drawSceneLayout(activeSceneId, 1.0, (1.0 - t) * 1920);
+                } else if (transitionType === 'zoom') {
+                    // Zoom transition
+                    drawSceneLayout(prevSceneId, 1.0 - t);
+                    drawSceneLayout(activeSceneId, t);
+                } else {
+                    drawSceneLayout(activeSceneId, 1.0);
+                }
+
+                if (t >= 1.0) {
+                    isTransitioning = false;
+                }
+            } else {
+                drawSceneLayout(activeSceneId, 1.0);
+            }
+
+            requestAnimationFrame(renderFrame);
+        }
+
+        requestAnimationFrame(renderFrame);
+
+        window.switchScene = function (id) {
+            if (id === activeSceneId && !isTransitioning) return;
+            prevSceneId = activeSceneId;
+            activeSceneId = id;
+            transitionType = document.getElementById('transition-select').value;
+            transitionDurationMs = transitionType === 'cut' ? 0 : 300;
+            isTransitioning = true;
+            transitionStartTime = performance.now();
+
+            // Update UI Badges
+            document.querySelectorAll('.scene-card').forEach((el, idx) => {
+                if (idx + 1 === id) el.classList.add('active');
+                else el.classList.remove('active');
+            });
+
+            document.getElementById('active-scene-badge').innerText = scenes[id].name;
+        };
+
+        // Keyboard Hotkeys (1, 2, 3, 4)
+        window.addEventListener('keydown', (e) => {
+            if (['1', '2', '3', '4'].includes(e.key)) {
+                switchScene(parseInt(e.key));
+            }
+        });
+
+        // ==========================================
+        // 2. PRO AUDIO MIXER & LIVE VU METERS
+        // ==========================================
+        const channels = {
+            mic: { vol: 1.0, muted: false, level: 0.0 },
+            screen: { vol: 0.8, muted: false, level: 0.2 },
+            video: { vol: 1.0, muted: false, level: 0.1 },
+            bgm: { vol: 0.85, muted: false, level: 0.6 },
+            master: { vol: 1.0, muted: false, level: 0.0 }
+        };
+
+        let isTalking = false;
+        let duckingRatio = 1.0;
+
+        window.startTalking = function () {
+            isTalking = true;
+            document.getElementById('ducking-badge').innerText = 'DUCKING ACTIVE (-12dB)';
+            document.getElementById('ducking-badge').className = 'text-[9px] px-2 py-0.5 rounded font-mono bg-blue-600 text-white uppercase font-bold animate-pulse';
+        };
+
+        window.stopTalking = function () {
+            isTalking = false;
+            document.getElementById('ducking-badge').innerText = 'READY';
+            document.getElementById('ducking-badge').className = 'text-[9px] px-2 py-0.5 rounded font-mono bg-zinc-800 text-zinc-500 uppercase font-bold';
+        };
+
+        window.toggleMute = function (chanKey) {
+            channels[chanKey].muted = !channels[chanKey].muted;
+            const btn = document.getElementById(`mute-${chanKey}`);
+            if (channels[chanKey].muted) {
+                btn.className = 'text-[10px] font-bold w-6 h-6 rounded bg-red-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]';
+            } else {
+                btn.className = 'text-[10px] font-bold w-6 h-6 rounded bg-zinc-800 text-zinc-400 hover:text-white';
+            }
+        };
+
+        // Draw Vertical VU Meter (Green -> Yellow -> Red)
+        function drawVUMeter(canvasId, level) {
+            const c = document.getElementById(canvasId);
+            if (!c) return;
+            const vCtx = c.getContext('2d');
+            const w = c.width;
+            const h = c.height;
+
+            vCtx.fillStyle = '#18181b';
+            vCtx.fillRect(0, 0, w, h);
+
+            const fillH = Math.min(h, Math.max(0, level * h));
+            const y = h - fillH;
+
+            // Gradient: Green at bottom, Yellow in middle, Red at top
+            const grad = vCtx.createLinearGradient(0, h, 0, 0);
+            grad.addColorStop(0, '#22c55e');    // Green
+            grad.addColorStop(0.7, '#eab308');  // Yellow
+            grad.addColorStop(0.9, '#ef4444');  // Red
+
+            vCtx.fillStyle = grad;
+            vCtx.fillRect(1, y, w - 2, fillH);
+        }
+
+        // 60 FPS Audio DSP Simulation Loop
+        function audioLoop() {
+            // Auto-Ducking attack/release physics
+            if (isTalking) {
+                duckingRatio = Math.max(0.25, duckingRatio - 0.08); // Fast smooth duck down to 25%
+                channels.mic.level = channels.mic.muted ? 0 : (0.65 + Math.random() * 0.25) * channels.mic.vol;
+            } else {
+                duckingRatio = Math.min(1.0, duckingRatio + 0.03);  // Smooth release back to 100%
+                channels.mic.level = channels.mic.muted ? 0 : Math.max(0, channels.mic.level * 0.85);
+            }
+
+            // Simulated active background music
+            channels.bgm.level = channels.bgm.muted ? 0 : (0.45 + Math.sin(Date.now() / 300) * 0.15) * channels.bgm.vol * duckingRatio;
+            channels.screen.level = channels.screen.muted ? 0 : (0.15 + Math.random() * 0.1) * channels.screen.vol;
+            channels.video.level = channels.video.muted ? 0 : 0.05 * channels.video.vol;
+
+            // Master Bus mix
+            const masterSum = (channels.mic.level + channels.bgm.level + channels.screen.level + channels.video.level) * channels.master.vol;
+            channels.master.level = Math.min(0.98, masterSum);
+
+            // Render all VU meters
+            drawVUMeter('vu-mic', channels.mic.level);
+            drawVUMeter('vu-screen', channels.screen.level);
+            drawVUMeter('vu-video', channels.video.level);
+            drawVUMeter('vu-bgm', channels.bgm.level);
+            drawVUMeter('vu-master', channels.master.level);
+
+            requestAnimationFrame(audioLoop);
+        }
+
+        requestAnimationFrame(audioLoop);
+    </script>
+</body>
+
+</html>

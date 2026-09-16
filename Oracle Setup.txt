@@ -1,0 +1,161 @@
+Here is the complete, step-by-step guide to setting up your Broadcast Studio on **Oracle Cloud Always Free (4 Cores / 24 GB RAM)**.
+
+---
+
+### Step 1: Create the Free Oracle VM
+
+1. Log in to [cloud.oracle.com](https://cloud.oracle.com).
+2. From the navigation menu (top left), go to **Compute** ➔ **Instances** ➔ Click **Create Instance**.
+3. Configure the settings:
+   * **Name**: `broadcast-studio`
+   * **Placement**: Leave default.
+   * **Image and Shape**: Click **Edit**:
+     - **Image**: Select **Ubuntu 24.04** (or Ubuntu 22.04).
+     - **Shape**: Click **Change Shape** ➔ Select **Ampere** (ARM) ➔ Check `VM.Standard.A1.Flex`.
+     - Drag the sliders to:
+       - **OCPU count**: `4`
+       - **Memory (GB)**: `24`
+   * **Networking**: Ensure **"Assign a public IPv4 address"** is checked.
+   * **Add SSH Keys**: Select **"Generate a key pair for me"** and click **Save Private Key** (download it as `ssh-key.key`).
+4. Click **Create** at the bottom. Wait 1–2 minutes until the status turns **RUNNING (Green)**.
+5. Note down your **Public IPv4 Address** (e.g. `140.238.xxx.xxx`).
+
+---
+
+### Step 2: Open Firewall Ports in Oracle Cloud Console
+
+By default, Oracle blocks incoming traffic on non-standard ports. We must open ports `80`, `443`, and `8000`:
+
+1. On your instance page, click your **Subnet** link (under **Primary VNIC**).
+2. Click **Default Security List for...**
+3. Click **Add Ingress Rules**:
+   * **Source CIDR**: `0.0.0.0/0`
+   * **IP Protocol**: `TCP`
+   * **Destination Port Range**: `80,443,8000`
+   * **Description**: `Broadcast Studio Ports`
+4. Click **Add Ingress Rules**.
+
+---
+
+### Step 3: Connect via SSH & Install Dependencies
+
+On your local Windows computer (open PowerShell in the folder where your `ssh-key.key` was downloaded):
+
+```powershell
+# Set key permissions (Windows)
+icacls ssh-key.key /inheritance:r
+icacls ssh-key.key /grant:r "$($env:USERNAME):(R)"
+
+# Connect to your Oracle VM (Replace with your Oracle Public IP)
+ssh -i ssh-key.key ubuntu@YOUR_ORACLE_PUBLIC_IP
+```
+
+Once connected to the Oracle VM terminal, update the VM firewall and install tools:
+
+```bash
+# 1. Open Ubuntu internal firewall for ports 80, 443, 8000
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 8000 -j ACCEPT
+sudo netfilter-persistent save
+
+# 2. Update packages & install Python, FFmpeg, Git, and Caddy (for free automatic HTTPS)
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3-pip python3-venv ffmpeg git caddy
+```
+
+---
+
+### Step 4: Transfer / Clone Your Broadcast App
+
+Inside your SSH session on the Oracle VM:
+
+```bash
+# Clone your repository (or copy your files)
+git clone https://github.com/YOUR_USERNAME/Brod_cast_App.git /home/ubuntu/Brod_cast_App
+cd /home/ubuntu/Brod_cast_App
+
+# Create virtual environment and install requirements
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+---
+
+### Step 5: Configure 24/7 Autostart Service (`systemd`)
+
+To keep your studio running continuously in the background (even if you close SSH or the server reboots):
+
+```bash
+sudo nano /etc/systemd/system/broadcast.service
+```
+
+Paste this configuration:
+
+```ini
+[Unit]
+Description=Python Broadcast Studio Engine
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Brod_cast_App
+ExecStart=/home/ubuntu/Brod_cast_App/venv/bin/python /home/ubuntu/Brod_cast_App/run.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`), then enable and start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable broadcast
+sudo systemctl start broadcast
+```
+
+Check status anytime:
+```bash
+sudo systemctl status broadcast
+```
+
+---
+
+### Step 6: Set Up Instant Automatic HTTPS (Camera & Mic Support)
+
+To allow browsers on phones and laptops to unlock Camera and Microphone, configure **Caddy** to provide free automatic SSL on port 443:
+
+```bash
+sudo nano /etc/caddy/Caddyfile
+```
+
+Replace its contents with:
+
+```caddyfile
+# Replace with your domain name (or free DuckDNS subdomain like my-studio.duckdns.org)
+# Or use your public IP: YOUR_ORACLE_PUBLIC_IP:443
+YOUR_ORACLE_PUBLIC_IP {
+    reverse_proxy localhost:8000
+}
+```
+
+Reload Caddy:
+```bash
+sudo systemctl restart caddy
+```
+
+---
+
+### Step 7: You're Live!
+
+Now open your browser on **any phone, tablet, or laptop**:
+👉 `https://YOUR_ORACLE_PUBLIC_IP` (or `https://your-domain.com`)
+
+* **No tunnels needed.**
+* **Zero bandwidth caps (10 TB / month).**
+* **4 Dedicated CPU Cores & 24 GB RAM.**
+* **Runs 24/7/365 with 0-second downtime.**
