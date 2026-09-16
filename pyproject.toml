@@ -19,5 +19,9 @@ dependencies = [
     "psutil>=5.9.0"
 ]
 
+[tool.setuptools]
+packages = ["python_app"]
+py-modules = ["main"]
+
 [tool.vercel]
 entrypoint = "main.py"
