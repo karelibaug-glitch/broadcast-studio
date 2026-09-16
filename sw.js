@@ -1,4 +1,4 @@
-const CACHE_NAME = 'broadcast-studio-v3';
+const CACHE_NAME = 'broadcast-studio-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

@@ -10,7 +10,12 @@ from typing import Dict, Any, List, Optional
 import os
 import shutil
 import time
-import cv2
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
 
 from python_app.core.state_manager import studio_state
 from python_app.core.compositor import compositor
