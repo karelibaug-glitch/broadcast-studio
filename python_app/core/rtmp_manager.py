@@ -1,8 +1,10 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 Multi-Destination RTMP Broadcast Manager using FFmpeg with Tee Muxer and H.264 Bypass/Single-Encode.
 Streams live composited video and audio to YouTube, Twitch, Facebook, Kick, and custom RTMP endpoints.
 """
+
 
 # pylint: disable=broad-exception-caught,line-too-long,missing-function-docstring,missing-class-docstring
 # pylint: disable=too-many-instance-attributes,too-many-branches,too-many-statements,too-many-locals

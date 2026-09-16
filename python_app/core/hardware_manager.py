@@ -1,8 +1,10 @@
+from __future__ import annotations
 """
 Hardware Device Manager for Pro Broadcast Studio
 Enables direct native capture of USB Webcams, HDMI Capture Cards (Elgato, CamLink, etc.)
 outside browser sandbox restrictions. Works across Windows, macOS, and Linux.
 """
+
 
 import sys
 import time

@@ -1,8 +1,10 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 WebRTC PeerConnection and Streaming Track Manager using aiortc.
 Streams composited video and audio tracks directly to remote browsers and players.
 """
+
 
 # pylint: disable=no-member
 

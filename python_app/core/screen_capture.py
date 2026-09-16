@@ -1,3 +1,4 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 Cross-platform screen and window capture engine.
@@ -38,12 +39,18 @@ class ScreenCaptureEngine:
     """
     def __init__(self):
         self._lock = threading.Lock()
-        self._sct: Optional[mss.mss] = None
+        self._sct: Optional[Any] = None
 
-    def _get_sct(self) -> mss.MSS:
+    def _get_sct(self) -> Any:
+        if mss is None:
+            return None
         if self._sct is None:
-            self._sct = mss.MSS()
+            try:
+                self._sct = mss.mss()
+            except Exception:
+                self._sct = None
         return self._sct
+
 
     def get_monitors(self) -> List[Dict[str, Any]]:
         """

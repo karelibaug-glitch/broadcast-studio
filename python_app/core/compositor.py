@@ -1,9 +1,11 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 Real-time Video Compositor Engine.
 Uses a single master rendering loop at 30 FPS with thread-safe cached frame buffers.
 Features real-time 1.0x video playback clock with auto-start, seek, loop, and speed controls.
 """
+
 
 try:
     import cv2

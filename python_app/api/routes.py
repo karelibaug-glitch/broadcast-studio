@@ -1,7 +1,9 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 REST Endpoints for Broadcast Studio.
 """
+
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Response
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse

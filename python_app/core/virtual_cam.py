@@ -1,8 +1,10 @@
+from __future__ import annotations
 # pylint: skip-file
 """
 Virtual Camera Output Sink using pyvirtualcam.
 Allows OBS, vMix, Zoom, and Discord to capture the studio feed as a webcam.
 """
+
 
 # pylint: disable=broad-exception-caught,import-outside-toplevel
 
