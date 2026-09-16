@@ -5,15 +5,30 @@ Uses a single master rendering loop at 30 FPS with thread-safe cached frame buff
 Features real-time 1.0x video playback clock with auto-start, seek, loop, and speed controls.
 """
 
-import cv2
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except Exception:
+    Image = None
+    ImageDraw = None
+    ImageFont = None
+
 import time
 import os
 import threading
 from typing import Dict, Optional, Tuple, Any
 from python_app.core.state_manager import studio_state, LayerState
 from python_app.core.screen_capture import screen_capturer
+
 
 
 class MediaSource:

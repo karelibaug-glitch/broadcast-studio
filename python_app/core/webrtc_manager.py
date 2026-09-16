@@ -11,13 +11,33 @@ import fractions
 import time
 from typing import Set, Dict, Any, Optional
 
-import numpy as np
-from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription, RTCRtpSender
-from aiortc.contrib.media import MediaRelay
-import av
-import cv2
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription, RTCRtpSender
+    from aiortc.contrib.media import MediaRelay
+except Exception:
+    MediaStreamTrack = object
+    RTCPeerConnection = None
+    RTCSessionDescription = None
+    RTCRtpSender = None
+    MediaRelay = None
+
+try:
+    import av
+except Exception:
+    av = None
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
 
 from python_app.core.compositor import compositor
+
 
 
 class CompositorVideoTrack(MediaStreamTrack):

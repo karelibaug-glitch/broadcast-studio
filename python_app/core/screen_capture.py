@@ -10,10 +10,26 @@ Compatible with Windows, macOS, and Linux.
 import threading
 from typing import List, Dict, Any, Optional
 
-import numpy as np
-import mss
-import cv2
-from PIL import ImageGrab
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import mss
+except Exception:
+    mss = None
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    from PIL import ImageGrab
+except Exception:
+    ImageGrab = None
+
 
 
 class ScreenCaptureEngine:
