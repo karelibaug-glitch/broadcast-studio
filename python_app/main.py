@@ -322,11 +322,23 @@ async def rtmp_stream_ingest(websocket: WebSocket, link_id: str = "primary", ses
 
 # Mount Recordings directory
 RECORDINGS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "recordings"))
-os.makedirs(RECORDINGS_DIR, exist_ok=True)
-app.mount("/recordings", StaticFiles(directory=RECORDINGS_DIR), name="recordings")
+try:
+    os.makedirs(RECORDINGS_DIR, exist_ok=True)
+except Exception:
+    RECORDINGS_DIR = "/tmp/recordings"
+    try:
+        os.makedirs(RECORDINGS_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+if os.path.exists(RECORDINGS_DIR):
+    app.mount("/recordings", StaticFiles(directory=RECORDINGS_DIR), name="recordings")
 
 # Mount Uploads directory
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+if os.path.exists(UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Mount Static UI directory
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+

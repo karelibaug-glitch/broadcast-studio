@@ -28,7 +28,15 @@ from python_app.api.websocket import ws_manager
 router = APIRouter(prefix="/api")
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except Exception:
+    UPLOAD_DIR = "/tmp/uploads"
+    try:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+    except Exception:
+        pass
+
 
 
 class LayerCreateRequest(BaseModel):

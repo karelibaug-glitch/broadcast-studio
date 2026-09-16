@@ -336,12 +336,20 @@ class RTMPStreamManager:
         }
 
         self.recordings_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "recordings"))
-        os.makedirs(self.recordings_dir, exist_ok=True)
+        try:
+            os.makedirs(self.recordings_dir, exist_ok=True)
+        except Exception:
+            self.recordings_dir = "/tmp/recordings"
+            try:
+                os.makedirs(self.recordings_dir, exist_ok=True)
+            except Exception:
+                pass
 
         if config_file is None:
             config_file = os.path.join(os.path.dirname(__file__), "..", "rtmp_destinations.json")
         self.config_file = os.path.abspath(config_file)
         self._load_destinations()
+
 
     def get_settings(self) -> Dict[str, Any]:
         with self._lock:
@@ -454,7 +462,13 @@ class RTMPStreamManager:
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump([d.to_dict() for d in self.destinations.values()], f, indent=2)
         except Exception as e:
-            print(f"[RTMPManager] Error saving destinations: {e}")
+            try:
+                self.config_file = "/tmp/rtmp_destinations.json"
+                with open(self.config_file, "w", encoding="utf-8") as f:
+                    json.dump([d.to_dict() for d in self.destinations.values()], f, indent=2)
+            except Exception as e2:
+                print(f"[RTMPManager] Error saving destinations (in-memory state active): {e2}")
+
 
     def add_destination(self, name: str, platform: str = "custom", server_url: str = "",
                         stream_key: str = "", enabled: bool = True) -> RTMPDestination:
