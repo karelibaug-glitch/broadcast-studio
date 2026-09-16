@@ -1,0 +1,110 @@
+name: Build Android APK (USB Capture & WebRTC)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: 📱 Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install Node Dependencies
+        run: |
+          npm install
+
+      - name: 📂 Prepare Web Assets (www)
+        run: |
+          node build-www.js
+
+      - name: 🤖 Initialize Capacitor Android Project
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: 🔧 Configure Android Permissions (USB OTG, Camera, Audio, WebRTC)
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            echo "Patching AndroidManifest.xml for USB Host, Camera, and Audio..."
+            
+            # Add permissions if not present
+            sed -i '/<application/i \
+    <uses-permission android:name="android.permission.INTERNET" />\
+    <uses-permission android:name="android.permission.CAMERA" />\
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />\
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />\
+    <uses-feature android:name="android.hardware.camera" android:required="false" />\
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' "$MANIFEST"
+          fi
+
+      - name: 🌐 Enable WebRTC Media Permissions in MainActivity
+        run: |
+          MAIN_ACTIVITY="android/app/src/main/java/com/broadcast/studio/MainActivity.java"
+          if [ -f "$MAIN_ACTIVITY" ]; then
+            echo "Patching MainActivity.java to automatically grant WebRTC media stream permissions..."
+            cat << 'EOF' > "$MAIN_ACTIVITY"
+package com.broadcast.studio;
+
+import android.os.Bundle;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        WebView webView = getBridge().getWebView();
+        webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        webView.getSettings().setJavaScriptEnabled(true);
+        webView.getSettings().setDomStorageEnabled(true);
+
+        // Auto-grant WebRTC Camera and Microphone permissions inside Android WebView
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    request.grant(request.getResources());
+                });
+            }
+        });
+    }
+}
+EOF
+          fi
+
+      - name: 🔨 Grant Gradle Execution Permission
+        run: |
+          chmod +x android/gradlew
+
+      - name: 🚀 Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
+
+      - name: 📦 Upload Downloadable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Broadcast-Studio-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
