@@ -11,7 +11,7 @@
         if (stored && stored.trim() !== '') {
             return stored.trim().replace(/\/+$/, '');
         }
-        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.protocol.startsWith('http')) {
             return window.location.origin;
         }
         return '';
@@ -51,6 +51,19 @@
         return window.location.hostname || 'localhost';
     };
 
+    window.getServerPort = function () {
+        const serverUrl = window.getServerUrl();
+        if (serverUrl) {
+            try {
+                const u = new URL(serverUrl);
+                if (u.port) return parseInt(u.port, 10);
+                return u.protocol === 'https:' ? 443 : 80;
+            } catch (_) { }
+        }
+        if (window.location.port) return parseInt(window.location.port, 10);
+        return window.location.protocol === 'https:' ? 443 : 80;
+    };
+
     window.getWsProtocol = function () {
         const serverUrl = window.getServerUrl();
         if (serverUrl) {
@@ -59,7 +72,7 @@
         return window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     };
 
-    // 1. Transparent Fetch Proxy for all /api/ endpoints
+    // 1. Transparent Fetch Proxy for all /api/ and /peerjs/ endpoints
     const originalFetch = window.fetch;
     window.fetch = function (input, init) {
         let url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
@@ -78,7 +91,53 @@
         return originalFetch.call(this, input, init);
     };
 
-    // 2. Native Android USB Video Bridge Helpers & Hooks
+    // 2. Dynamic PeerJS Wrapper to automatically route Peer connections to the configured server IP
+    function patchPeerClass() {
+        if (typeof window.Peer !== 'undefined' && !window.Peer.__patched) {
+            const OrigPeer = window.Peer;
+            class PatchedPeer extends OrigPeer {
+                constructor(...args) {
+                    let id = undefined;
+                    let opts = {};
+                    if (args.length === 1) {
+                        if (typeof args[0] === 'string') {
+                            id = args[0];
+                        } else if (typeof args[0] === 'object' && args[0] !== null) {
+                            opts = Object.assign({}, args[0]);
+                        }
+                    } else if (args.length >= 2) {
+                        id = args[0];
+                        if (typeof args[1] === 'object' && args[1] !== null) {
+                            opts = Object.assign({}, args[1]);
+                        }
+                    }
+
+                    const sUrl = window.getServerUrl ? window.getServerUrl() : '';
+                    if (sUrl) {
+                        try {
+                            const u = new URL(sUrl);
+                            opts.host = u.hostname;
+                            opts.port = u.port ? parseInt(u.port, 10) : (u.protocol === 'https:' ? 443 : 80);
+                            opts.secure = (u.protocol === 'https:');
+                            if (!opts.path) opts.path = '/peerjs';
+                        } catch (_) { }
+                    }
+
+                    if (id !== undefined) {
+                        super(id, opts);
+                    } else {
+                        super(opts);
+                    }
+                }
+            }
+            PatchedPeer.__patched = true;
+            window.Peer = PatchedPeer;
+        }
+    }
+    patchPeerClass();
+    window.addEventListener('load', patchPeerClass);
+
+    // 3. Native Android USB Video Bridge Helpers & Hooks
     window.hasAndroidUsbCaptureCard = function () {
         return window.AndroidUsbBridge && typeof window.AndroidUsbBridge.isUsbCameraConnected === 'function' && window.AndroidUsbBridge.isUsbCameraConnected();
     };
@@ -141,7 +200,7 @@
         });
     }
 
-    // 3. Seamless WebRTC MediaDevices Polyfill for Android USB Capture Card
+    // 4. Seamless WebRTC MediaDevices Polyfill for Android USB Capture Card
     if (navigator.mediaDevices) {
         const origEnumerate = navigator.mediaDevices.enumerateDevices ? navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices) : null;
         if (origEnumerate) {
@@ -229,17 +288,56 @@
         }
     }
 
-    // 4. UI: Inject Server Connection Status Badge & Configuration Modal
+    // 5. Studio Module Navigation Helper
+    window.navigateToStudioModule = function (target) {
+        const input = document.getElementById('server-url-input');
+        if (input && input.value.trim()) {
+            window.setServerUrl(input.value.trim());
+        }
+        window.closeServerConnectModal();
+
+        const banner = document.getElementById('server-connect-banner');
+        if (banner) banner.remove();
+        updateServerBadgeUI();
+
+        const roomId = (typeof getStudioId === 'function') ? getStudioId() : (localStorage.getItem('broadcast_studio_id') || '10001');
+
+        if (target === 'controller' || target === '#controller') {
+            const currentPath = window.location.pathname;
+            if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
+                window.location.hash = '#controller?room=' + roomId;
+                if (typeof handleRouting === 'function') {
+                    handleRouting();
+                }
+            } else {
+                window.location.href = 'index.html#controller?room=' + roomId;
+            }
+        } else if (target === 'player' || target === '#player') {
+            const currentPath = window.location.pathname;
+            if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
+                window.location.hash = '#player?room=' + roomId;
+                if (typeof handleRouting === 'function') {
+                    handleRouting();
+                }
+            } else {
+                window.location.href = 'index.html#player?room=' + roomId;
+            }
+        } else {
+            window.location.href = target;
+        }
+    };
+
+    // 6. UI: Inject Server Connection Status Badge & Configuration Modal
     function injectServerConnectUI() {
         if (document.getElementById('server-connect-modal')) return;
 
         // Modal HTML
         const modal = document.createElement('div');
         modal.id = 'server-connect-modal';
-        modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center hidden p-4';
-        modal.style.cssText = 'position: fixed; inset: 0; z-index: 9999999 !important; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);';
+        modal.className = 'fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center hidden p-3 sm:p-4';
+        modal.style.cssText = 'position: fixed; inset: 0; z-index: 9999999 !important; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);';
         modal.innerHTML = `
-            <div class="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 text-white font-sans animate-fade-in" style="max-height: 90vh; overflow-y: auto;">
+            <div class="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl space-y-4 text-white font-sans animate-fade-in text-left" style="max-height: 92vh; overflow-y: auto;">
                 <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
                     <div class="flex items-center gap-2">
                         <span class="text-xl">🌐</span>
@@ -249,21 +347,21 @@
                 </div>
 
                 <p class="text-xs text-zinc-400 leading-relaxed">
-                    Connect this mobile APK or remote controller to your PC running the Broadcast Studio backend.
+                    Connect this mobile APK or remote client to your PC running Broadcast Studio.
                 </p>
 
                 <div class="space-y-1.5">
-                    <label class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Server IP Address & Port</label>
+                    <label class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">PC Server IP & Port</label>
                     <div class="flex items-center gap-2">
                         <input type="text" id="server-url-input" placeholder="e.g. 192.168.1.100:8000"
                             class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 font-mono">
                     </div>
-                    <p class="text-[10px] text-zinc-500">Enter your PC's Wi-Fi IP address (e.g. <code>192.168.1.50:8000</code> or <code>https://your-studio.com</code>).</p>
+                    <p class="text-[10px] text-zinc-500">Enter your PC's IP address (e.g. <code>192.168.1.50:8000</code>).</p>
                 </div>
 
                 <div id="server-test-status" class="text-xs p-3 rounded-xl bg-zinc-950 border border-zinc-800 hidden flex items-center gap-2"></div>
 
-                <div class="flex items-center gap-2 pt-2">
+                <div class="flex items-center gap-2 pt-1">
                     <button onclick="testServerConnection()" id="btn-test-server"
                         class="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 rounded-xl text-xs font-bold transition">
                         ⚡ Test Ping
@@ -272,6 +370,33 @@
                         class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-blue-600/30">
                         💾 Save & Connect
                     </button>
+                </div>
+
+                <!-- One-Click Direct Launch Actions -->
+                <div class="border-t border-zinc-800 pt-3 space-y-2">
+                    <label class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">🚀 Launch Studio Modules</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="navigateToStudioModule('controller')"
+                            class="px-3 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 text-indigo-200 rounded-xl text-xs font-bold text-left transition flex items-center gap-2">
+                            <span>🎛️</span>
+                            <span class="truncate">Studio Controller</span>
+                        </button>
+                        <button onclick="navigateToStudioModule('director_suite.html')"
+                            class="px-3 py-2.5 bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/50 text-rose-200 rounded-xl text-xs font-bold text-left transition flex items-center gap-2">
+                            <span>🎬</span>
+                            <span class="truncate">Director Suite</span>
+                        </button>
+                        <button onclick="navigateToStudioModule('guest.html')"
+                            class="px-3 py-2.5 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 text-emerald-200 rounded-xl text-xs font-bold text-left transition flex items-center gap-2">
+                            <span>📱</span>
+                            <span class="truncate">Camera / Guest</span>
+                        </button>
+                        <button onclick="navigateToStudioModule('switcher.html')"
+                            class="px-3 py-2.5 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 text-amber-200 rounded-xl text-xs font-bold text-left transition flex items-center gap-2">
+                            <span>🔀</span>
+                            <span class="truncate">Video Switcher</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="border-t border-zinc-800 pt-3 flex items-center justify-between text-[11px] text-zinc-500">
@@ -349,9 +474,9 @@
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(s => {
                 s.getTracks().forEach(t => t.stop());
-                alert("Permissions check complete!");
+                alert("Camera & Microphone permissions granted!");
             }).catch(e => {
-                alert("Permission request: " + e.message);
+                alert("Permission status: " + e.message);
             });
         }
     };
@@ -400,7 +525,7 @@
         }
     };
 
-    window.saveServerConnection = function () {
+    window.saveServerConnection = function (target) {
         const input = document.getElementById('server-url-input');
         if (!input) return;
         window.setServerUrl(input.value);
@@ -408,12 +533,22 @@
         const banner = document.getElementById('server-connect-banner');
         if (banner) banner.remove();
         window.closeServerConnectModal();
-        if (typeof showDirectorToast === 'function') {
-            showDirectorToast('Server address updated! Reconnecting...', 'success');
+
+        if (target) {
+            window.navigateToStudioModule(target);
+            return;
         }
-        setTimeout(() => {
-            window.location.reload();
-        }, 500);
+
+        // If currently on landing view, auto-advance straight to Controller view
+        const currentHash = window.location.hash || '';
+        if (currentHash === '' || currentHash === '#' || currentHash.startsWith('#landing')) {
+            window.navigateToStudioModule('controller');
+        } else {
+            // Otherwise reload current module view to re-initialize WebSockets/PeerJS with new server IP
+            setTimeout(() => {
+                window.location.reload();
+            }, 300);
+        }
     };
 
     // Auto-prompt Android OS runtime permissions on load

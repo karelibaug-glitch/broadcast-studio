@@ -2147,10 +2147,22 @@
         window.remoteStreams = {};
 
         // Self-Hosted / Local WebRTC PeerJS Config with NAT Traversal Fallbacks
-        const isPeerHttps = window.location.protocol === 'https:';
-        const peerPort = window.location.port ? parseInt(window.location.port, 10) : (isPeerHttps ? 443 : 80);
+        const sUrl = window.getServerUrl ? window.getServerUrl() : '';
+        let peerHost = window.location.hostname || 'localhost';
+        let isPeerHttps = window.location.protocol === 'https:';
+        let peerPort = window.location.port ? parseInt(window.location.port, 10) : (isPeerHttps ? 443 : 80);
+
+        if (sUrl) {
+            try {
+                const u = new URL(sUrl);
+                peerHost = u.hostname;
+                isPeerHttps = u.protocol === 'https:';
+                peerPort = u.port ? parseInt(u.port, 10) : (isPeerHttps ? 443 : 80);
+            } catch (_) {}
+        }
+
         const peerConfig = {
-            host: window.location.hostname || 'localhost',
+            host: peerHost,
             port: peerPort,
             path: '/peerjs',
             secure: isPeerHttps,
