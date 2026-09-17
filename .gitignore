@@ -8,3 +8,5 @@ android/app/build/
 android/.gradle/
 __pycache__/
 *.pyc
+recordings/
+*.mp4

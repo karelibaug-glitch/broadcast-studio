@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#0d0e12">
     <link rel="stylesheet" href="css/tailwind.min.css">
     <script src="js/peerjs.min.js"></script>
+    <script src="js/modules/server-connect.js"></script>
     <script>
         // WebRTC Glare & Redundant Remote Answer Shield
         (function () {
@@ -4911,6 +4912,31 @@
 
         async function addOverlayCameraSource() {
             try {
+                // Check if Native Android USB Capture Card is connected
+                if (window.AndroidUsbBridge && window.AndroidUsbBridge.isUsbCameraConnected()) {
+                    const img = document.createElement('img');
+                    img.src = window.AndroidUsbBridge.getStreamUrl();
+                    img.crossOrigin = 'anonymous';
+
+                    const pool = document.getElementById('video-pool-container') || document.body;
+                    pool.appendChild(img);
+
+                    const ovl = {
+                        id: 'ovl_' + Date.now(),
+                        type: 'image',
+                        name: `🔌 USB Card (${window.AndroidUsbBridge.getDeviceName()})`,
+                        element: img,
+                        onAir: true,
+                        position: 'fullscreen',
+                        opacity: 1.0,
+                        aspectRatio: 16 / 9
+                    };
+                    state.overlays.push(ovl);
+                    renderOverlaysList();
+                    showDirectorToast(`🔌 USB Capture Card Added: ${window.AndroidUsbBridge.getDeviceName()}`, 'success');
+                    return;
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false

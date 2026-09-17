@@ -17,22 +17,23 @@
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="stylesheet" href="css/tailwind.min.css">
     <script src="js/peerjs.min.js"></script>
+    <script src="js/modules/server-connect.js"></script>
     <script>
         // WebRTC Glare & Redundant Remote Answer Shield
         // Shields against InvalidStateError when duplicate or glare remote answers arrive in stable/closed state
-        (function () {
+        (function() {
             if (typeof window.RTCPeerConnection !== 'undefined') {
                 const origSetRemoteDescription = window.RTCPeerConnection.prototype.setRemoteDescription;
-                window.RTCPeerConnection.prototype.setRemoteDescription = function (desc, successCallback, failureCallback) {
+                window.RTCPeerConnection.prototype.setRemoteDescription = function(desc, successCallback, failureCallback) {
                     if (this.signalingState === 'closed') {
                         if (typeof successCallback === 'function') {
-                            try { successCallback(); } catch (_) { }
+                            try { successCallback(); } catch (_) {}
                         }
                         return Promise.resolve();
                     }
                     if (desc && (desc.type === 'answer' || desc.type === 'pranswer') && this.signalingState === 'stable') {
                         if (typeof successCallback === 'function') {
-                            try { successCallback(); } catch (_) { }
+                            try { successCallback(); } catch (_) {}
                         }
                         return Promise.resolve();
                     }
@@ -40,10 +41,10 @@
                 };
 
                 const origSetLocalDescription = window.RTCPeerConnection.prototype.setLocalDescription;
-                window.RTCPeerConnection.prototype.setLocalDescription = function (desc, successCallback, failureCallback) {
+                window.RTCPeerConnection.prototype.setLocalDescription = function(desc, successCallback, failureCallback) {
                     if (this.signalingState === 'closed') {
                         if (typeof successCallback === 'function') {
-                            try { successCallback(); } catch (_) { }
+                            try { successCallback(); } catch (_) {}
                         }
                         return Promise.resolve();
                     }
@@ -191,15 +192,15 @@
             left: -50%;
             width: 200%;
             height: 60%;
-            background-image:
+            background-image: 
                 linear-gradient(to right, rgba(59, 130, 246, 0.18) 1px, transparent 1px),
                 linear-gradient(to bottom, rgba(59, 130, 246, 0.18) 1px, transparent 1px);
             background-size: 56px 56px;
             transform: perspective(600px) rotateX(72deg);
             transform-origin: bottom center;
             pointer-events: none;
-            mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
+            mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
         }
 
         /* --- Ultra-Realistic 3D Frosted Glass Console Deck --- */
@@ -211,7 +212,7 @@
             backdrop-filter: blur(48px) saturate(210%) brightness(108%);
             -webkit-backdrop-filter: blur(48px) saturate(210%) brightness(108%);
             border: 1px solid rgba(255, 255, 255, 0.22);
-            box-shadow:
+            box-shadow: 
                 0 16px 0 #05070c,
                 0 32px 64px rgba(0, 0, 0, 0.95),
                 0 0 80px rgba(56, 189, 248, 0.22),
@@ -265,7 +266,7 @@
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(254, 205, 211, 0.65);
-            box-shadow:
+            box-shadow: 
                 0 10px 0 #4c0519,
                 0 22px 45px rgba(225, 29, 72, 0.45),
                 inset 0 1.5px 0 rgba(255, 255, 255, 0.6);
@@ -273,14 +274,14 @@
 
         .btn-hero-director:hover {
             background: linear-gradient(135deg, rgba(244, 63, 94, 0.96) 0%, rgba(225, 29, 72, 0.92) 50%, rgba(159, 18, 57, 0.98) 100%);
-            box-shadow:
+            box-shadow: 
                 0 12px 0 #4c0519,
                 0 26px 55px rgba(225, 29, 72, 0.65),
                 inset 0 1.5px 0 rgba(255, 255, 255, 0.7);
         }
 
         .btn-hero-director:active {
-            box-shadow:
+            box-shadow: 
                 0 2px 0 #4c0519,
                 0 6px 15px rgba(225, 29, 72, 0.3),
                 inset 0 1px 0 rgba(0, 0, 0, 0.3);
@@ -292,7 +293,7 @@
             backdrop-filter: blur(30px) saturate(190%);
             -webkit-backdrop-filter: blur(30px) saturate(190%);
             border: 1px solid rgba(255, 255, 255, 0.16);
-            box-shadow:
+            box-shadow: 
                 0 8px 0 #06080e,
                 0 18px 36px rgba(0, 0, 0, 0.7),
                 inset 0 1.5px 0 rgba(255, 255, 255, 0.3);
@@ -301,7 +302,7 @@
         .workspace-card-3d:hover {
             border-color: rgba(56, 189, 248, 0.7);
             background: linear-gradient(135deg, rgba(255, 255, 255, 0.14) 0%, rgba(35, 48, 75, 0.65) 40%, rgba(16, 23, 38, 0.9) 100%);
-            box-shadow:
+            box-shadow: 
                 0 10px 0 #06080e,
                 0 24px 48px rgba(0, 0, 0, 0.8),
                 0 0 35px rgba(56, 189, 248, 0.3),
@@ -309,7 +310,7 @@
         }
 
         .workspace-card-3d:active {
-            box-shadow:
+            box-shadow: 
                 0 2px 0 #06080e,
                 0 6px 12px rgba(0, 0, 0, 0.4),
                 inset 0 1px 0 rgba(0, 0, 0, 0.3);
@@ -319,7 +320,7 @@
             background: linear-gradient(180deg, rgba(39, 42, 51, 0.8) 0%, rgba(26, 28, 35, 0.9) 100%);
             backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow:
+            box-shadow: 
                 0 6px 0 #090a0d,
                 0 12px 24px rgba(0, 0, 0, 0.6),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2);
@@ -328,14 +329,14 @@
         .btn-3d-zinc:hover {
             background: linear-gradient(180deg, rgba(53, 57, 69, 0.9) 0%, rgba(34, 37, 46, 0.95) 100%);
             border-color: rgba(255, 255, 255, 0.25);
-            box-shadow:
+            box-shadow: 
                 0 8px 0 #090a0d,
                 0 16px 30px rgba(0, 0, 0, 0.8),
                 inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
 
         .btn-3d-zinc:active {
-            box-shadow:
+            box-shadow: 
                 0 2px 0 #090a0d,
                 0 4px 10px rgba(0, 0, 0, 0.4);
         }
@@ -350,19 +351,9 @@
         }
 
         @keyframes aura-pulse {
-
-            0%,
-            100% {
-                opacity: 0.35;
-                transform: scale(1);
-            }
-
-            50% {
-                opacity: 0.7;
-                transform: scale(1.1);
-            }
+            0%, 100% { opacity: 0.35; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
         }
-
         .aura-glow {
             animation: aura-pulse 6s ease-in-out infinite;
         }
@@ -600,30 +591,27 @@
          ========================================== -->
     <div id="landing-view"
         class="flex flex-col items-center justify-center h-screen max-h-screen relative overflow-x-hidden overflow-y-auto sm:overflow-hidden px-4 py-3 sm:py-4 stage-3d">
-
+        
         <!-- Background Layer Container (Completely clips overflow to eliminate all scrollbars) -->
         <div class="absolute inset-0 overflow-hidden pointer-events-none -z-10">
             <!-- Deep Ambient Background Lighting -->
             <div class="absolute inset-0 bg-gradient-to-b from-zinc-950 via-[#07090e] to-black"></div>
-
+            
             <!-- Perspective 3D Studio Floor Grid -->
             <div class="studio-grid-floor"></div>
 
             <!-- Ambient Radial Aura Blobs -->
-            <div
-                class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-[38rem] h-80 sm:h-[38rem] bg-blue-600/15 rounded-full blur-[130px] aura-glow">
-            </div>
+            <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-[38rem] h-80 sm:h-[38rem] bg-blue-600/15 rounded-full blur-[130px] aura-glow"></div>
             <div class="absolute top-2/3 left-1/4 w-72 h-72 bg-rose-600/10 rounded-full blur-[120px]"></div>
             <div class="absolute top-1/3 right-1/4 w-72 h-72 bg-indigo-600/10 rounded-full blur-[120px]"></div>
         </div>
 
         <!-- Main Spacious 3D Master Console Container -->
         <main class="z-10 w-full max-w-3xl px-2.5 sm:px-6 mx-auto my-auto">
-
+            
             <!-- Studio Hero Title -->
             <div class="text-center mb-3.5 sm:mb-6">
-                <h1
-                    class="text-2xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-zinc-400 leading-tight drop-shadow-md">
+                <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-zinc-400 leading-tight drop-shadow-md">
                     Pro Broadcast Studio
                 </h1>
                 <p class="text-zinc-400 mt-1 text-xs sm:text-sm max-w-lg mx-auto leading-relaxed">
@@ -640,7 +628,7 @@
 
             <!-- Central 3D Isometric Master Control Console Deck -->
             <div id="deck-3d-card" class="deck-3d p-4 sm:p-8 pb-5 sm:pb-8 text-left">
-
+                
                 <!-- Hidden Compatibility Elements for Studio ID & Quality Routing -->
                 <input type="hidden" id="studio-id-input" oninput="saveStudioId(this.value)">
                 <div class="hidden" aria-hidden="true">
@@ -650,70 +638,56 @@
                 </div>
 
                 <!-- Deck Header with Studio Branding & Live Status -->
-                <div
-                    class="flex items-center justify-between gap-2 pb-3.5 sm:pb-5 mb-4 sm:mb-6 border-b border-white/10">
+                <div class="flex items-center justify-between gap-2 pb-3.5 sm:pb-5 mb-4 sm:mb-6 border-b border-white/10">
                     <div class="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                        <div
-                            class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-rose-600 via-indigo-600 to-blue-500 flex items-center justify-center shadow-[0_0_18px_rgba(225,29,72,0.45)] border border-white/25 shrink-0">
+                        <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-rose-600 via-indigo-600 to-blue-500 flex items-center justify-center shadow-[0_0_18px_rgba(225,29,72,0.45)] border border-white/25 shrink-0">
                             <span class="text-white text-xs sm:text-sm font-black">PB</span>
                         </div>
                         <div class="min-w-0">
-                            <h2 class="text-xs sm:text-sm font-extrabold text-white tracking-wider truncate">MASTER
-                                CONTROL</h2>
-                            <p class="text-[8px] sm:text-[10px] text-zinc-400 font-mono tracking-wide mt-0.5 truncate">
-                                STANDALONE PRODUCTION DESK</p>
+                            <h2 class="text-xs sm:text-sm font-extrabold text-white tracking-wider truncate">MASTER CONTROL</h2>
+                            <p class="text-[8px] sm:text-[10px] text-zinc-400 font-mono tracking-wide mt-0.5 truncate">STANDALONE PRODUCTION DESK</p>
                         </div>
                     </div>
 
-                    <div
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] sm:text-xs shadow-inner shrink-0 whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] sm:text-xs shadow-inner shrink-0 whitespace-nowrap">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
                         <span class="font-medium">ONLINE READY</span>
                     </div>
                 </div>
 
                 <!-- Featured Hero Action: Launch Multi-Camera Director Suite -->
-                <a href="director_suite.html"
-                    class="btn-3d btn-hero-director w-full p-3.5 sm:p-5 rounded-2xl font-bold text-white flex items-center justify-between gap-3 sm:gap-6 cursor-pointer mb-3.5 sm:mb-6 group">
+                <a href="director_suite.html" 
+                    class="btn-3d btn-hero-director w-full p-3.5 sm:p-5 rounded-2xl font-bold text-white flex items-center justify-between gap-3 sm:gap-6 cursor-pointer mb-5 sm:mb-6 group">
                     <div class="flex items-center gap-3 sm:gap-5 text-left min-w-0">
-                        <div
-                            class="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-black/30 border border-white/25 flex items-center justify-center text-xl sm:text-3xl shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                        <div class="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-black/30 border border-white/25 flex items-center justify-center text-xl sm:text-3xl shrink-0 shadow-inner group-hover:scale-105 transition-transform">
                             🎬
                         </div>
                         <div class="min-w-0">
                             <div class="flex items-center gap-2">
-                                <h3 class="text-sm sm:text-lg font-extrabold text-white tracking-wide">Multi-Camera
-                                    Director Suite</h3>
+                                <h3 class="text-sm sm:text-lg font-extrabold text-white tracking-wide">Multi-Camera Director Suite</h3>
                             </div>
-                            <p class="text-[11px] sm:text-sm text-rose-100/85 font-normal mt-0.5 sm:mt-1 leading-snug">
-                                Live Multi-Cam Switcher • Bonded RTMP • Studio FX</p>
+                            <p class="text-[11px] sm:text-sm text-rose-100/85 font-normal mt-0.5 sm:mt-1 leading-snug">Live Multi-Cam Switcher • Bonded RTMP • Studio FX</p>
                         </div>
                     </div>
-                    <div
-                        class="text-rose-200 group-hover:translate-x-1.5 transition-transform text-xl sm:text-2xl font-bold pr-1 shrink-0">
+                    <div class="text-rose-200 group-hover:translate-x-1.5 transition-transform text-xl sm:text-2xl font-bold pr-1 shrink-0">
                         ↗
                     </div>
                 </a>
 
                 <!-- Workspace Cards Grid (Player Window & Controller) -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5 mb-4 sm:mb-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-5 sm:mb-6">
                     <!-- Player Window Card -->
                     <button onclick="openPlayer()"
                         class="btn-3d workspace-card-3d p-3.5 sm:p-5 rounded-2xl text-left flex flex-col justify-between cursor-pointer group min-h-[120px] sm:min-h-[155px]">
                         <div class="flex items-center justify-between mb-2.5 sm:mb-3.5">
-                            <div
-                                class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-lg sm:text-xl shadow-inner group-hover:scale-110 transition-transform">
+                            <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-lg sm:text-xl shadow-inner group-hover:scale-110 transition-transform">
                                 🖥️
                             </div>
-                            <span
-                                class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-cyan-300 font-bold bg-cyan-500/15 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-cyan-500/30 whitespace-nowrap">MONITOR</span>
+                            <span class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-cyan-300 font-bold bg-cyan-500/15 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-cyan-500/30 whitespace-nowrap">MONITOR</span>
                         </div>
                         <div>
-                            <h4
-                                class="text-xs sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
-                                Player Window</h4>
-                            <p class="text-[11px] sm:text-xs text-zinc-400 mt-0.5 sm:mt-1 leading-relaxed">Dedicated
-                                pop-out video stage for external displays & OBS capture.</p>
+                            <h4 class="text-xs sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">Player Window</h4>
+                            <p class="text-[11px] sm:text-xs text-zinc-400 mt-0.5 sm:mt-1 leading-relaxed">Dedicated pop-out video stage for external displays & OBS capture.</p>
                         </div>
                     </button>
 
@@ -721,31 +695,23 @@
                     <button onclick="openController()"
                         class="btn-3d workspace-card-3d p-3.5 sm:p-5 rounded-2xl text-left flex flex-col justify-between cursor-pointer group min-h-[120px] sm:min-h-[155px]">
                         <div class="flex items-center justify-between mb-2.5 sm:mb-3.5">
-                            <div
-                                class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-lg sm:text-xl shadow-inner group-hover:scale-110 transition-transform">
+                            <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-lg sm:text-xl shadow-inner group-hover:scale-110 transition-transform">
                                 🎛️
                             </div>
-                            <span
-                                class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-indigo-300 font-bold bg-indigo-500/15 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-indigo-500/30 whitespace-nowrap">CONTROL</span>
+                            <span class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-indigo-300 font-bold bg-indigo-500/15 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-indigo-500/30 whitespace-nowrap">CONTROL</span>
                         </div>
                         <div>
-                            <h4
-                                class="text-xs sm:text-base font-bold text-white group-hover:text-indigo-300 transition-colors">
-                                Open Controller</h4>
-                            <p class="text-[11px] sm:text-xs text-zinc-400 mt-0.5 sm:mt-1 leading-relaxed">In-browser
-                                master mixing desk, graphic layers & audio mixer.</p>
+                            <h4 class="text-xs sm:text-base font-bold text-white group-hover:text-indigo-300 transition-colors">Open Controller</h4>
+                            <p class="text-[11px] sm:text-xs text-zinc-400 mt-0.5 sm:mt-1 leading-relaxed">In-browser master mixing desk, graphic layers & audio mixer.</p>
                         </div>
                     </button>
                 </div>
 
                 <!-- Deck Footer: Telemetry & Status & Install Button (Clean Responsive Layout) -->
-                <div
-                    class="pt-3.5 sm:pt-5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs">
+                <div class="pt-3.5 sm:pt-5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs">
                     <div class="flex items-center gap-2 text-zinc-400 w-full sm:w-auto justify-center sm:justify-start">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                        <span
-                            class="font-mono text-zinc-300 text-[11px] sm:text-sm font-medium tracking-wide whitespace-nowrap">1080p60
-                            • 128k AAC 48k • WebRTC P2P</span>
+                        <span class="font-mono text-zinc-300 text-[11px] sm:text-sm font-medium tracking-wide whitespace-nowrap">1080p60 • 128k AAC 48k • WebRTC P2P</span>
                     </div>
 
                     <div class="w-full sm:w-auto flex justify-center sm:justify-end">
@@ -777,8 +743,7 @@
                         </svg>
                     </div>
                     <h2 class="text-3xl font-bold text-white mt-4">Connecting to Controller...</h2>
-                    <p class="text-zinc-400 text-center">Auto-handshaking WebRTC tunnel.<br>Video will start rendering
-                        automatically.</p>
+                    <p class="text-zinc-400 text-center">Auto-handshaking WebRTC tunnel.<br>Video will start rendering automatically.</p>
                 </div>
             </div>
 
@@ -788,15 +753,11 @@
                 style="position:fixed; bottom:20px; right:76px; z-index:200; width:48px; height:48px; background:rgba(0,0,0,0.7); border:1px solid rgba(255,255,255,0.15); border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; backdrop-filter:blur(8px); transition:all 0.3s ease;"
                 onmouseenter="this.style.background='rgba(37,99,235,0.5)'"
                 onmouseleave="this.style.background='rgba(0,0,0,0.7)'">
-                <svg id="player-fs-enter-icon" style="width:22px; height:22px; color:#fff;" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                <svg id="player-fs-enter-icon" style="width:22px; height:22px; color:#fff;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
-                <svg id="player-fs-exit-icon" style="width:22px; height:22px; color:#fff; display:none;" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 4v4m0 0H5m4 0L4 3m11 1v4m0 0h4m-4 0l5-5M9 20v-4m0 0H5m4 0l-5 5m11-5h4m-4 0v4m0-4l5 5" />
+                <svg id="player-fs-exit-icon" style="width:22px; height:22px; color:#fff; display:none;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4v4m0 0H5m4 0L4 3m11 1v4m0 0h4m-4 0l5-5M9 20v-4m0 0H5m4 0l-5 5m11-5h4m-4 0v4m0-4l5 5" />
                 </svg>
             </div>
 
@@ -843,35 +804,25 @@
             <!-- Stream Telemetry HUD (Stats for Nerds) -->
             <div id="player-stats-hud" class="player-ui"
                 style="position:fixed; top:16px; left:16px; z-index:201; background:rgba(9,9,11,0.88); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:12px 16px; backdrop-filter:blur(16px); box-shadow:0 10px 30px rgba(0,0,0,0.5); font-family:monospace; min-width:240px; pointer-events:none; transition:opacity 0.5s ease, transform 0.5s ease;">
-                <div
-                    style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:6px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:6px;">
                     <div style="display:flex; align-items:center; gap:6px;">
-                        <span
-                            style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; box-shadow:0 0 8px #10b981;"></span>
-                        <span
-                            style="font-size:11px; font-weight:700; color:#f4f4f5; text-transform:uppercase; letter-spacing:1px; font-family:'Inter',sans-serif;">Stream
-                            Stats</span>
+                        <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; box-shadow:0 0 8px #10b981;"></span>
+                        <span style="font-size:11px; font-weight:700; color:#f4f4f5; text-transform:uppercase; letter-spacing:1px; font-family:'Inter',sans-serif;">Stream Stats</span>
                     </div>
-                    <span id="player-stats-status"
-                        style="font-size:10px; color:#10b981; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Live
-                        WebRTC</span>
+                    <span id="player-stats-status" style="font-size:10px; color:#10b981; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Live WebRTC</span>
                 </div>
                 <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:11px; color:#a1a1aa;">
                     <span style="color:#71717a;">Bitrate:</span>
-                    <span id="player-stat-bitrate" style="color:#38bdf8; font-weight:600; text-align:right;">0.00
-                        Mbps</span>
+                    <span id="player-stat-bitrate" style="color:#38bdf8; font-weight:600; text-align:right;">0.00 Mbps</span>
 
                     <span style="color:#71717a;">Res / FPS:</span>
-                    <span id="player-stat-res-fps" style="color:#f4f4f5; font-weight:600; text-align:right;">1920×1080 @
-                        0 FPS</span>
+                    <span id="player-stat-res-fps" style="color:#f4f4f5; font-weight:600; text-align:right;">1920×1080 @ 0 FPS</span>
 
                     <span style="color:#71717a;">Sender Links:</span>
-                    <span id="player-stat-links" style="color:#34d399; font-weight:600; text-align:right;">1 Direct
-                        P2P</span>
+                    <span id="player-stat-links" style="color:#34d399; font-weight:600; text-align:right;">1 Direct P2P</span>
 
                     <span style="color:#71717a;">Chunks / Data:</span>
-                    <span id="player-stat-chunks" style="color:#fbbf24; font-weight:600; text-align:right;">0 chunks
-                        (0.0 MB)</span>
+                    <span id="player-stat-chunks" style="color:#fbbf24; font-weight:600; text-align:right;">0 chunks (0.0 MB)</span>
 
                     <span style="color:#71717a;">Latency / RTT:</span>
                     <span id="player-stat-rtt" style="color:#a78bfa; font-weight:600; text-align:right;">0 ms</span>
@@ -883,25 +834,17 @@
                 style="position:fixed; bottom:20px; left:20px; z-index:201; background:rgba(9,9,11,0.88); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:10px 14px; backdrop-filter:blur(16px); box-shadow:0 10px 30px rgba(0,0,0,0.5); pointer-events:none; min-width:240px; transition:opacity 0.5s ease, transform 0.5s ease;">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
                     <div style="display:flex; align-items:center; gap:6px;">
-                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                            style="width:14px; height:14px; color:#34d399;">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z">
-                            </path>
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px; height:14px; color:#34d399;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
                         </svg>
-                        <span
-                            style="font-size:10px; font-weight:700; color:#e4e4e7; text-transform:uppercase; letter-spacing:1px; font-family:'Inter',sans-serif;">Audio
-                            VU Meter</span>
+                        <span style="font-size:10px; font-weight:700; color:#e4e4e7; text-transform:uppercase; letter-spacing:1px; font-family:'Inter',sans-serif;">Audio VU Meter</span>
                     </div>
-                    <span id="player-vu-db-text"
-                        style="font-size:10px; font-family:monospace; font-weight:700; color:#10b981;">-40.0 dB</span>
+                    <span id="player-vu-db-text" style="font-size:10px; font-family:monospace; font-weight:700; color:#10b981;">-40.0 dB</span>
                 </div>
                 <!-- Dual Stereo Canvas Meter (L / R) -->
-                <canvas id="player-vu-canvas" width="220" height="24"
-                    style="display:block; width:220px; height:24px; border-radius:4px;"></canvas>
+                <canvas id="player-vu-canvas" width="220" height="24" style="display:block; width:220px; height:24px; border-radius:4px;"></canvas>
                 <!-- dB Scale Markers -->
-                <div
-                    style="display:flex; justify-content:space-between; margin-top:3px; font-size:8px; font-family:monospace; color:#52525b; padding-left:16px;">
+                <div style="display:flex; justify-content:space-between; margin-top:3px; font-size:8px; font-family:monospace; color:#52525b; padding-left:16px;">
                     <span>-40</span>
                     <span>-24</span>
                     <span>-12</span>
@@ -924,13 +867,12 @@
 
         <!-- ====== FULL SCREEN MONITOR ====== -->
         <div id="controller-preview-wrapper"
-            class="w-full h-full bg-black overflow-hidden relative checkerboard outline-none" tabindex="0">
+            class="w-full h-full bg-black overflow-hidden relative checkerboard outline-none"
+            tabindex="0">
             <div id="controller-preview-canvas" class="fixed-canvas z-10">
                 <!-- Layers dynamically injected here -->
             </div>
-            <div
-                class="absolute inset-0 border-2 border-transparent focus-within:border-blue-500 pointer-events-none transition-colors z-20">
-            </div>
+            <div class="absolute inset-0 border-2 border-transparent focus-within:border-blue-500 pointer-events-none transition-colors z-20"></div>
         </div>
 
         <!-- ====== HUD OVERLAY (always visible, minimal) ====== -->
@@ -941,24 +883,20 @@
                 <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                 <span class="text-red-400 font-bold uppercase text-[10px]">LIVE</span>
                 <span class="text-zinc-600">|</span>
-                <span class="text-zinc-400">OUT: <span id="deck-hud-fps" class="text-emerald-400 font-bold">30</span>
-                    FPS</span>
+                <span class="text-zinc-400">OUT: <span id="deck-hud-fps" class="text-emerald-400 font-bold">30</span> FPS</span>
                 <span class="text-zinc-600">|</span>
-                <span class="text-zinc-400"><span id="deck-hud-bitrate" class="text-blue-400 font-bold">4500</span>
-                    kbps</span>
+                <span class="text-zinc-400"><span id="deck-hud-bitrate" class="text-blue-400 font-bold">4500</span> kbps</span>
             </div>
             <div id="program-on-air"
                 class="hidden items-center gap-2 bg-red-600/20 backdrop-blur-sm border border-red-500/40 rounded-lg px-3 py-1 pointer-events-auto">
                 <span class="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse"></span>
                 <span class="text-[10px] font-bold text-red-400 uppercase tracking-widest">On Air:</span>
-                <span id="program-layer-name"
-                    class="text-[11px] font-semibold text-red-200 max-w-[120px] truncate">&mdash;</span>
+                <span id="program-layer-name" class="text-[11px] font-semibold text-red-200 max-w-[120px] truncate">&mdash;</span>
             </div>
             <!-- Studio Monitor Mute Indicator in HUD -->
             <div id="hud-monitor-mute-badge"
                 class="flex items-center gap-1.5 bg-amber-500/20 backdrop-blur-sm border border-amber-500/50 rounded-lg px-2.5 py-1 pointer-events-auto cursor-pointer transition-all hover:bg-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]"
-                onclick="toggleMonitorMute()"
-                title="Studio Monitor Muted: Local speakers are silent, but remote player & broadcast can hear. Click to listen locally.">
+                onclick="toggleMonitorMute()" title="Studio Monitor Muted: Local speakers are silent, but remote player & broadcast can hear. Click to listen locally.">
                 <span class="text-xs">🔇</span>
                 <span class="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Monitor Muted</span>
             </div>
@@ -982,10 +920,7 @@
             <!-- Copy Remote Link -->
             <button onclick="copyPlayerLink()" data-tooltip="🔗 Copy Remote Player Link"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/40 text-blue-300 transition-all hover:scale-105 active:scale-95 text-xs font-semibold">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
                 <span class="hidden sm:inline">Share Link</span>
             </button>
 
@@ -1008,19 +943,15 @@
             <!-- P2P Status -->
             <div class="flex items-center gap-1.5 bg-zinc-950/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-zinc-800 cursor-pointer"
                 data-tooltip="📶 WebRTC Low-Latency P2P Status">
-                <span class="relative flex h-2 w-2"><span id="p2p-ping"
-                        class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span
-                        id="p2p-dot" class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span>
-                <span id="p2p-status"
-                    class="text-[10px] font-semibold text-blue-400 uppercase tracking-widest">P2P</span>
+                <span class="relative flex h-2 w-2"><span id="p2p-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span id="p2p-dot" class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span>
+                <span id="p2p-status" class="text-[10px] font-semibold text-blue-400 uppercase tracking-widest">P2P</span>
             </div>
 
             <!-- Room ID -->
             <div class="bg-zinc-950/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-zinc-800 flex items-center cursor-pointer"
                 data-tooltip="🔑 Broadcast Room Pairing ID" onclick="copyPlayerLink()">
                 <span class="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mr-1">ID:</span>
-                <span id="display-room-id"
-                    class="text-[10px] font-mono text-emerald-400 tracking-widest font-bold">...</span>
+                <span id="display-room-id" class="text-[10px] font-mono text-emerald-400 tracking-widest font-bold">...</span>
             </div>
 
             <!-- Blackout -->
@@ -1030,13 +961,9 @@
             </button>
 
             <!-- PWA Install (hidden by default) -->
-            <button id="pwa-install-header-btn" onclick="triggerPwaInstall()"
-                data-tooltip="📲 Install Progressive Web App"
+            <button id="pwa-install-header-btn" onclick="triggerPwaInstall()" data-tooltip="📲 Install Progressive Web App"
                 class="hidden w-8 h-8 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 flex items-center justify-center text-emerald-300 transition-all hover:scale-105 active:scale-95">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2zM12 7v5m0 0l-2-2m2 2l2-2" />
-                </svg>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2zM12 7v5m0 0l-2-2m2 2l2-2"/></svg>
             </button>
         </div>
 
@@ -1044,51 +971,34 @@
         <div id="v2-dock-left"
             class="studio-dock fixed left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
             <!-- Browse File -->
-            <button onclick="document.getElementById('file-input').click()"
-                data-tooltip="📂 Browse & Ingest Media (Video/Audio/Image)"
+            <button onclick="document.getElementById('file-input').click()" data-tooltip="📂 Browse & Ingest Media (Video/Audio/Image)"
                 class="w-10 h-10 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 flex items-center justify-center text-emerald-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
             </button>
-            <input type="file" id="file-input" class="hidden" accept="image/*,video/*,audio/*"
-                onchange="handleFileInput(event)">
+            <input type="file" id="file-input" class="hidden" accept="image/*,video/*,audio/*" onchange="handleFileInput(event)">
 
             <!-- Camera -->
             <button onclick="openCameraModal()" data-tooltip="📹 Add Live Camera & Microphone"
                 class="w-10 h-10 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 flex items-center justify-center text-emerald-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
 
             <!-- Screen Share -->
             <button onclick="addScreenShareLayer()" data-tooltip="🖥️ Share Screen or App Window"
                 class="w-10 h-10 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 border border-indigo-500/40 flex items-center justify-center text-indigo-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             </button>
 
             <!-- Text Overlay -->
             <button onclick="addTextLayer()" data-tooltip="🔤 Add Real-time Text Overlay"
                 class="w-10 h-10 rounded-xl bg-sky-600/30 hover:bg-sky-600/60 border border-sky-500/40 flex items-center justify-center text-sky-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             </button>
 
             <!-- URL / Web Source -->
             <button onclick="openAddLayerModal()" data-tooltip="🌐 Add Web URL / Stream Source"
                 class="w-10 h-10 rounded-xl bg-orange-600/30 hover:bg-orange-600/60 border border-orange-500/40 flex items-center justify-center text-orange-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
             </button>
         </div>
 
@@ -1098,36 +1008,25 @@
             <!-- Layer Stack / Timeline -->
             <button onclick="toggleFloatingPanel('layer-stack-card')" data-tooltip="📚 Layer Stack & Visual Hierarchy"
                 class="w-10 h-10 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/40 flex items-center justify-center text-amber-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
             </button>
 
             <!-- Master Audio Mixer -->
             <button onclick="toggleFloatingPanel('audio-mixer-card')" data-tooltip="🎛️ Master Audio Mixer & Levels"
                 class="w-10 h-10 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 flex items-center justify-center text-purple-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
             </button>
 
             <!-- Layer Properties -->
-            <button onclick="toggleFloatingPanel('properties-panel')"
-                data-tooltip="⚙️ Layer Transform & Filters Properties"
+            <button onclick="toggleFloatingPanel('properties-panel')" data-tooltip="⚙️ Layer Transform & Filters Properties"
                 class="w-10 h-10 rounded-xl bg-violet-600/30 hover:bg-violet-600/60 border border-violet-500/40 flex items-center justify-center text-violet-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
             </button>
 
             <div class="w-6 h-px bg-zinc-700/50 my-0.5"></div>
 
             <!-- Studio Monitor Audio Mute Toggle (Mute local speakers only) -->
-            <button id="toolbar-monitor-mute-btn" onclick="toggleMonitorMute()"
-                data-tooltip="🔇 Studio Monitor Mute (Click to Listen)"
+            <button id="toolbar-monitor-mute-btn" onclick="toggleMonitorMute()" data-tooltip="🔇 Studio Monitor Mute (Click to Listen)"
                 class="w-10 h-10 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 border border-amber-500/50 flex items-center justify-center text-amber-300 transition-all hover:scale-110 active:scale-95 shadow-[0_0_12px_rgba(245,158,11,0.25)]">
                 <span id="toolbar-monitor-icon" class="text-base">🔇</span>
             </button>
@@ -1141,18 +1040,13 @@
                     class="w-8 h-8 rounded-lg bg-zinc-800/60 hover:bg-zinc-700 border border-zinc-700/40 flex items-center justify-center text-zinc-300 text-xs transition-all active:scale-90">⏮</button>
                 <button id="vc-playpause" onclick="window.vcTogglePlay()" data-tooltip="▶ Play / Pause Media"
                     class="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 border border-blue-500/40 flex items-center justify-center text-white text-xs font-bold transition-all active:scale-90">▶</button>
-                <span id="vc-current" class="text-[11px] font-mono text-emerald-400 font-bold min-w-[32px] text-center"
-                    data-tooltip="Current Playback Position">0:00</span>
-                <input type="range" id="vc-seek" min="0" max="100" step="0.1" value="0"
-                    data-tooltip="⏱ Scrub Video Timeline" class="w-32 sm:w-48 accent-emerald-500 cursor-pointer h-1.5"
-                    oninput="window.vcSeek(this.value)">
-                <span id="vc-duration" class="text-[11px] font-mono text-zinc-500 min-w-[32px] text-center"
-                    data-tooltip="Total Media Duration">0:00</span>
+                <span id="vc-current" class="text-[11px] font-mono text-emerald-400 font-bold min-w-[32px] text-center" data-tooltip="Current Playback Position">0:00</span>
+                <input type="range" id="vc-seek" min="0" max="100" step="0.1" value="0" data-tooltip="⏱ Scrub Video Timeline"
+                    class="w-32 sm:w-48 accent-emerald-500 cursor-pointer h-1.5" oninput="window.vcSeek(this.value)">
+                <span id="vc-duration" class="text-[11px] font-mono text-zinc-500 min-w-[32px] text-center" data-tooltip="Total Media Duration">0:00</span>
                 <button id="vc-loop" onclick="window.vcToggleLoop()" data-tooltip="🔁 Toggle Media Loop"
                     class="w-8 h-8 rounded-lg bg-zinc-800/60 hover:bg-zinc-700 border border-zinc-700/40 flex items-center justify-center text-zinc-400 text-xs transition-all active:scale-90">🔁</button>
-                <span id="vc-layer-name"
-                    class="text-[10px] font-medium text-zinc-400 truncate max-w-[100px] border-l border-zinc-700/50 pl-2"
-                    data-tooltip="🎵 Active Media Layer">No Media</span>
+                <span id="vc-layer-name" class="text-[10px] font-medium text-zinc-400 truncate max-w-[100px] border-l border-zinc-700/50 pl-2" data-tooltip="🎵 Active Media Layer">No Media</span>
             </div>
         </div>
 
@@ -1162,24 +1056,20 @@
         <div id="properties-panel"
             class="fixed top-4 right-4 z-40 w-72 max-h-[52vh] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-2xl shadow-2xl flex flex-col hidden"
             style="scrollbar-width: thin; scrollbar-color: #3f3f46 transparent;">
-            <div
-                class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80 rounded-t-2xl">
+            <div class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80 rounded-t-2xl">
                 <div class="flex items-center gap-2 pointer-events-none select-none">
                     <span class="text-zinc-500 text-xs">⋮⋮</span>
                     <h2 class="text-xs font-bold text-blue-400 uppercase tracking-wider">Layer Properties</h2>
                 </div>
-                <button
-                    onclick="document.getElementById('properties-panel').classList.add('hidden'); window._propPanelClosedByUser = true;"
-                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors"
-                    title="Close">✕</button>
+                <button onclick="document.getElementById('properties-panel').classList.add('hidden'); window._propPanelClosedByUser = true;"
+                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors" title="Close">✕</button>
             </div>
             <div class="p-3 space-y-3 overflow-y-auto max-h-[calc(52vh-48px)]">
                 <div id="prop-layer-name" class="text-xs text-zinc-300 font-semibold truncate">No layer selected</div>
                 <!-- Text Controls -->
                 <div id="prop-text-controls" class="space-y-3 hidden">
                     <div>
-                        <label class="block text-[10px] text-zinc-500 font-bold uppercase mb-1">Live Text
-                            Content</label>
+                        <label class="block text-[10px] text-zinc-500 font-bold uppercase mb-1">Live Text Content</label>
                         <textarea id="prop-text-val" rows="2"
                             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-500 text-white resize-none"
                             placeholder="Type here..."></textarea>
@@ -1187,46 +1077,37 @@
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-[10px] text-zinc-500 font-bold uppercase mb-1">Color</label>
-                            <input type="color" id="prop-text-color"
-                                class="w-full h-7 rounded cursor-pointer bg-transparent border-0 p-0">
+                            <input type="color" id="prop-text-color" class="w-full h-7 rounded cursor-pointer bg-transparent border-0 p-0">
                         </div>
                         <div>
                             <label class="block text-[10px] text-zinc-500 font-bold uppercase mb-1">Font Size</label>
-                            <input type="number" id="prop-text-size"
-                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
-                                value="120">
+                            <input type="number" id="prop-text-size" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white" value="120">
                         </div>
                     </div>
                 </div>
                 <!-- Transform -->
                 <div id="prop-transform-controls" class="space-y-2 hidden">
-                    <h3
-                        class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
-                        Transform</h3>
+                    <h3 class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1">Transform</h3>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="text-[9px] text-zinc-500 uppercase">X Position</label>
                             <input type="number" id="prop-x" onchange="updateLayerPropFromUI()"
-                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
-                                value="960">
+                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white" value="960">
                         </div>
                         <div>
                             <label class="text-[9px] text-zinc-500 uppercase">Y Position</label>
                             <input type="number" id="prop-y" onchange="updateLayerPropFromUI()"
-                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
-                                value="540">
+                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white" value="540">
                         </div>
                         <div>
                             <label class="text-[9px] text-zinc-500 uppercase">Scale</label>
                             <input type="number" id="prop-scale" step="0.05" onchange="updateLayerPropFromUI()"
-                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
-                                value="1">
+                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white" value="1">
                         </div>
                         <div>
                             <label class="text-[9px] text-zinc-500 uppercase">Z-Index</label>
                             <input type="number" id="prop-z" onchange="updateLayerPropFromUI()"
-                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
-                                value="1">
+                                class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white" value="1">
                         </div>
                     </div>
                 </div>
@@ -1240,8 +1121,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-zinc-500">🔊</span>
-                        <input type="range" id="prop-volume" min="0" max="1" step="0.05"
-                            class="w-full accent-blue-500 cursor-pointer">
+                        <input type="range" id="prop-volume" min="0" max="1" step="0.05" class="w-full accent-blue-500 cursor-pointer">
                     </div>
                 </div>
                 <!-- Video Playback (hidden, controls are inline in toolbar) -->
@@ -1256,23 +1136,20 @@
             <span class="text-zinc-500 text-xs select-none pointer-events-none mr-0.5">⋮⋮</span>
             <span class="text-base group-hover:rotate-6 transition-transform">📑</span>
             <span class="text-xs font-bold text-amber-300 font-sans tracking-wide">Layers</span>
-            <span id="layer-stack-badge-count"
-                class="bg-amber-500 text-zinc-950 font-bold text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center">0</span>
+            <span id="layer-stack-badge-count" class="bg-amber-500 text-zinc-950 font-bold text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center">0</span>
         </div>
 
         <!-- Layer Stack Panel (floating mini card) -->
         <div id="layer-stack-card"
             class="fixed top-4 left-4 z-40 w-72 max-h-[52vh] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-2xl shadow-2xl flex flex-col hidden select-none"
             style="scrollbar-width: thin; scrollbar-color: #3f3f46 transparent;">
-            <div
-                class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80 rounded-t-2xl">
+            <div class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80 rounded-t-2xl">
                 <div class="flex items-center gap-2 pointer-events-none select-none">
                     <span class="text-zinc-500 text-xs">⋮⋮</span>
                     <h2 class="text-xs font-bold text-amber-400 uppercase tracking-wider">📑 Layer Stack</h2>
                 </div>
                 <button onclick="window.closeLayerStack()"
-                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors"
-                    title="Minimize to Floating Icon">✕</button>
+                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors" title="Minimize to Floating Icon">✕</button>
             </div>
             <div id="layer-stack-container" class="p-3 flex flex-col gap-1.5 overflow-y-auto max-h-[calc(52vh-48px)]">
                 <!-- Layer items dynamically injected -->
@@ -1287,27 +1164,22 @@
             class="fixed top-4 right-4 z-40 w-72 max-h-[52vh] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-2xl shadow-2xl flex flex-col relative overflow-hidden hidden"
             style="scrollbar-width: thin; scrollbar-color: #3f3f46 transparent;">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
-            <div
-                class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80">
+            <div class="flex justify-between items-center p-3 border-b border-zinc-800 cursor-grab active:cursor-grabbing select-none drag-handle bg-zinc-900/80">
                 <div class="flex items-center gap-2 pointer-events-none select-none">
                     <span class="text-zinc-500 text-xs">⋮⋮</span>
                     <h2 class="text-xs font-bold text-purple-400 uppercase tracking-wider">🎚️ Master Audio Mixer</h2>
                 </div>
-                <button
-                    onclick="document.getElementById('audio-mixer-card').classList.add('hidden'); window._audioMixerClosedByUser = true;"
-                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors"
-                    title="Close">✕</button>
+                <button onclick="document.getElementById('audio-mixer-card').classList.add('hidden'); window._audioMixerClosedByUser = true;"
+                    class="text-zinc-500 hover:text-white text-lg leading-none p-1 rounded-md transition-colors" title="Close">✕</button>
             </div>
 
             <!-- Dedicated Studio Monitor Mute Control -->
-            <div
-                class="px-3 py-2 bg-zinc-950/60 border-b border-zinc-800/80 flex items-center justify-between shrink-0 select-none">
+            <div class="px-3 py-2 bg-zinc-950/60 border-b border-zinc-800/80 flex items-center justify-between shrink-0 select-none">
                 <div class="flex items-center gap-2">
                     <span id="mixer-monitor-icon" class="text-sm">🔇</span>
                     <div class="flex flex-col">
                         <span class="text-[11px] font-bold text-zinc-200">Studio Monitor</span>
-                        <span id="mixer-monitor-status" class="text-[9px] text-amber-400 font-mono font-semibold">Local
-                            Silent (Player Hears)</span>
+                        <span id="mixer-monitor-status" class="text-[9px] text-amber-400 font-mono font-semibold">Local Silent (Player Hears)</span>
                     </div>
                 </div>
                 <button id="mixer-monitor-toggle-btn" onclick="toggleMonitorMute()"
@@ -1323,12 +1195,10 @@
         </div>
 
         <!-- Hidden elements kept for FPS monitor compatibility -->
-        <div id="fps-monitor"
-            class="fixed top-3 right-3 z-30 flex gap-3 text-xs font-mono bg-zinc-950/80 backdrop-blur-sm px-3 py-1 rounded border border-zinc-800 hidden">
+        <div id="fps-monitor" class="fixed top-3 right-3 z-30 flex gap-3 text-xs font-mono bg-zinc-950/80 backdrop-blur-sm px-3 py-1 rounded border border-zinc-800 hidden">
             <span class="text-zinc-400">HOST: <span id="host-fps" class="text-emerald-400 font-bold">0</span> FPS</span>
             <span class="text-zinc-600">|</span>
-            <span class="text-zinc-400">PLAYER: <span id="player-fps" class="text-blue-400 font-bold">0</span>
-                FPS</span>
+            <span class="text-zinc-400">PLAYER: <span id="player-fps" class="text-blue-400 font-bold">0</span> FPS</span>
         </div>
 
     </div>
@@ -1338,23 +1208,18 @@
          ========================================== -->
     <div id="camera-modal"
         class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div
-            class="bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col gap-0 relative overflow-hidden max-w-md w-full">
-            <div
-                class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 z-10">
-            </div>
+        <div class="bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col gap-0 relative overflow-hidden max-w-md w-full">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 z-10"></div>
             <div class="flex justify-between items-center px-5 pt-5 pb-3 shrink-0 border-b border-zinc-800">
                 <h2 class="text-sm font-bold text-zinc-100 uppercase tracking-wider flex items-center gap-2">
                     <span class="text-base">📹</span>
                     <span>Camera & Capture Setup</span>
                 </h2>
-                <button onclick="closeCameraModal()"
-                    class="text-zinc-400 hover:text-white text-xl font-bold p-1">✕</button>
+                <button onclick="closeCameraModal()" class="text-zinc-400 hover:text-white text-xl font-bold p-1">✕</button>
             </div>
 
             <!-- Insecure Remote HTTP Alert Banner -->
-            <div id="cam-insecure-warning"
-                class="hidden mx-5 mt-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 flex flex-col gap-2">
+            <div id="cam-insecure-warning" class="hidden mx-5 mt-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 flex flex-col gap-2">
                 <div class="flex items-start gap-2.5">
                     <span class="text-base shrink-0">⚠️</span>
                     <div class="flex-1">
@@ -1365,12 +1230,10 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2 pt-1 border-t border-amber-500/20">
-                    <button onclick="window.switchToHttps()"
-                        class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold shadow transition flex items-center gap-1">
+                    <button onclick="window.switchToHttps()" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold shadow transition flex items-center gap-1">
                         🔒 Switch to HTTPS
                     </button>
-                    <button onclick="window.switchCameraSourceTab('hardware')"
-                        class="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-semibold transition flex items-center gap-1">
+                    <button onclick="window.switchCameraSourceTab('hardware')" class="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-semibold transition flex items-center gap-1">
                         🔌 Use Host Hardware
                     </button>
                 </div>
@@ -1386,21 +1249,16 @@
                 <button id="cam-tab-hardware" onclick="switchCameraSourceTab('hardware')"
                     class="px-3 py-2 text-xs font-bold rounded-t-lg border-b-2 border-transparent text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition">
                     <span>🔌 Host PC Hardware</span>
-                    <span
-                        class="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">DirectShow/V4L2</span>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">DirectShow/V4L2</span>
                 </button>
             </div>
 
             <div class="flex flex-col gap-4 p-5">
                 <!-- Live Video Preview -->
-                <div
-                    class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center shadow-inner">
-                    <video id="camera-modal-preview" autoplay playsinline muted
-                        class="w-full h-full object-cover"></video>
-                    <img id="camera-modal-hardware-preview" class="w-full h-full object-cover hidden"
-                        alt="Hardware Live Feed">
-                    <div id="camera-modal-preview-placeholder"
-                        class="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-1.5 text-xs">
+                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center shadow-inner">
+                    <video id="camera-modal-preview" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                    <img id="camera-modal-hardware-preview" class="w-full h-full object-cover hidden" alt="Hardware Live Feed">
+                    <div id="camera-modal-preview-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-1.5 text-xs">
                         <span class="text-3xl">📹</span>
                         <span>Camera Feed Preview</span>
                     </div>
@@ -1413,8 +1271,7 @@
                         <label class="text-xs text-zinc-300 font-semibold flex items-center gap-1.5">
                             <span class="text-emerald-400">📹</span> Camera
                         </label>
-                        <select id="camera-select"
-                            onchange="autoSelectPairedMic(this.value); startCameraModalPreview();"
+                        <select id="camera-select" onchange="autoSelectPairedMic(this.value); startCameraModalPreview();"
                             class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:border-emerald-500 outline-none">
                             <option value="">Detecting cameras...</option>
                         </select>
@@ -1434,9 +1291,7 @@
                         </select>
                         <!-- Real-time VU meter -->
                         <div class="w-full bg-zinc-950 rounded-full h-1.5 overflow-hidden border border-zinc-800 mt-1">
-                            <div id="camera-modal-mic-meter-fill"
-                                class="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-75"
-                                style="width: 0%"></div>
+                            <div id="camera-modal-mic-meter-fill" class="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-75" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
@@ -1448,8 +1303,7 @@
                             <label class="text-xs text-zinc-300 font-semibold flex items-center gap-1.5">
                                 <span class="text-blue-400">🔌</span> Host Capture Device (Capture Card / Webcam)
                             </label>
-                            <button onclick="loadHardwareDevices()"
-                                class="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition">
+                            <button onclick="loadHardwareDevices()" class="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition">
                                 🔄 Refresh
                             </button>
                         </div>
@@ -1458,8 +1312,7 @@
                             <option value="">Select a host capture card or webcam...</option>
                         </select>
                         <p id="hardware-device-info" class="text-[10px] text-zinc-400 leading-snug">
-                            Captures directly from the host PC hardware. Works 100% reliably over HTTP and HTTPS on any
-                            device with zero browser permission prompts.
+                            Captures directly from the host PC hardware. Works 100% reliably over HTTP and HTTPS on any device with zero browser permission prompts.
                         </p>
                     </div>
                 </div>
@@ -1484,60 +1337,46 @@
          ========================================== -->
     <div id="add-layer-modal"
         class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
-        <div
-            class="bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col gap-0 relative overflow-hidden max-w-md w-full max-h-[80vh]">
+        <div class="bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl flex flex-col gap-0 relative overflow-hidden max-w-md w-full max-h-[80vh]">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-500 z-10"></div>
             <div class="flex justify-between items-center px-5 pt-5 pb-3 shrink-0 border-b border-zinc-800">
                 <h2 class="text-sm font-bold text-zinc-100 uppercase tracking-wider flex items-center gap-2">
                     <span>🔗 Add URL / Web Source</span>
                 </h2>
-                <button onclick="closeAddLayerModal()"
-                    class="text-zinc-400 hover:text-white text-xl font-bold p-1">✕</button>
+                <button onclick="closeAddLayerModal()" class="text-zinc-400 hover:text-white text-xl font-bold p-1">✕</button>
             </div>
             <div class="flex flex-col gap-4 p-5 overflow-y-auto">
                 <!-- URL / Path Input -->
                 <div class="bg-zinc-950/50 p-3 rounded-lg border border-zinc-800/50 flex flex-col gap-2">
-                    <label class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">URL or File
-                        Path</label>
-                    <input type="text" id="new-media-val"
-                        class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm focus:border-blue-500 text-white"
-                        placeholder="https://... or C:/Videos/loop.mp4">
+                    <label class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">URL or File Path</label>
+                    <input type="text" id="new-media-val" class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm focus:border-blue-500 text-white" placeholder="https://... or C:/Videos/loop.mp4">
                     <div class="flex gap-2">
-                        <select id="new-media-type"
-                            class="bg-zinc-900 border border-zinc-700 rounded px-2 py-2 text-sm text-zinc-300 focus:border-blue-500 outline-none">
+                        <select id="new-media-type" class="bg-zinc-900 border border-zinc-700 rounded px-2 py-2 text-sm text-zinc-300 focus:border-blue-500 outline-none">
                             <option value="auto">Auto-Detect</option>
                             <option value="video">Video</option>
                             <option value="audio">Audio</option>
                             <option value="image">Image</option>
                             <option value="iframe">Web Iframe</option>
                         </select>
-                        <button onclick="addMediaLayerPath(); closeAddLayerModal();"
-                            class="flex-1 bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-500 text-sm font-semibold">+
-                            Add</button>
+                        <button onclick="addMediaLayerPath(); closeAddLayerModal();" class="flex-1 bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-500 text-sm font-semibold">+ Add</button>
                     </div>
-                    <p class="text-[10px] text-zinc-500 mt-1">⚠️ Some sites block iframes. Use Screen Share icon for
-                        those.</p>
+                    <p class="text-[10px] text-zinc-500 mt-1">⚠️ Some sites block iframes. Use Screen Share icon for those.</p>
                 </div>
                 <!-- Bitrate & Transfer Mode -->
                 <div class="bg-zinc-950/50 p-3 rounded-lg border border-zinc-800/50 flex flex-col gap-2">
-                    <label
-                        class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest border-b border-zinc-800 pb-2">Stream
-                        Settings</label>
-                    <select id="bitrate-mode"
-                        class="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-2 text-sm text-zinc-300 focus:border-blue-500 outline-none"
+                    <label class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest border-b border-zinc-800 pb-2">Stream Settings</label>
+                    <select id="bitrate-mode" class="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-2 text-sm text-zinc-300 focus:border-blue-500 outline-none"
                         onchange="if(window.updateOutgoingStreamsQuality) window.updateOutgoingStreamsQuality(window.lastSelectedQuality)">
                         <option value="vbr">VBR (Variable Bitrate)</option>
                         <option value="cbr">CBR (Constant Bitrate)</option>
                     </select>
                     <div class="flex flex-col gap-2 mt-1">
                         <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-white">
-                            <input type="radio" name="media-mode" value="webrtc" checked class="accent-blue-500"
-                                onchange="toggleMediaMode()">
+                            <input type="radio" name="media-mode" value="webrtc" checked class="accent-blue-500" onchange="toggleMediaMode()">
                             WebRTC Stream
                         </label>
                         <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-white">
-                            <input type="radio" name="media-mode" value="path" class="accent-blue-500"
-                                onchange="toggleMediaMode()">
+                            <input type="radio" name="media-mode" value="path" class="accent-blue-500" onchange="toggleMediaMode()">
                             Remote Path
                         </label>
                     </div>
@@ -1891,16 +1730,13 @@
                     </div>
 
                     <!-- WebRTC Client-Side Multi-ISP Radar -->
-                    <div
-                        class="bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-purple-950/40 border border-blue-700/40 rounded-xl p-4 flex flex-col gap-3">
+                    <div class="bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-purple-950/40 border border-blue-700/40 rounded-xl p-4 flex flex-col gap-3">
                         <div class="flex flex-wrap justify-between items-center gap-2">
                             <div>
-                                <h4
-                                    class="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <h4 class="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
                                     <span>📡 Client Multi-ISP Radar (WebRTC Native Engine)</span>
                                 </h4>
-                                <p class="text-[11px] text-zinc-400">Auto-detects all network links (Wi-Fi, 4G/5G SIMs,
-                                    Ethernet), probes live ISP health, and handles instant failover.</p>
+                                <p class="text-[11px] text-zinc-400">Auto-detects all network links (Wi-Fi, 4G/5G SIMs, Ethernet), probes live ISP health, and handles instant failover.</p>
                             </div>
                             <div class="flex items-center gap-2">
                                 <button type="button" onclick="toggleAddISPInput()"
@@ -1915,13 +1751,10 @@
                         </div>
 
                         <!-- Add Custom ISP Input (Toggled) -->
-                        <div id="add-custom-isp-container"
-                            class="hidden flex gap-2 bg-black/40 p-2 rounded-lg border border-blue-900/50">
-                            <input type="text" id="custom-isp-name-input"
-                                placeholder="ISP Label (e.g. Jio 5G / Office Wi-Fi)"
+                        <div id="add-custom-isp-container" class="hidden flex gap-2 bg-black/40 p-2 rounded-lg border border-blue-900/50">
+                            <input type="text" id="custom-isp-name-input" placeholder="ISP Label (e.g. Jio 5G / Office Wi-Fi)"
                                 class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-blue-500 outline-none">
-                            <input type="text" id="custom-isp-ip-input"
-                                placeholder="IP / Gateway (e.g. 192.168.1.50 or 49.36.x.x)"
+                            <input type="text" id="custom-isp-ip-input" placeholder="IP / Gateway (e.g. 192.168.1.50 or 49.36.x.x)"
                                 class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-blue-500 outline-none font-mono">
                             <button type="button" onclick="addCustomISPRoute()"
                                 class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shrink-0">
@@ -1931,22 +1764,18 @@
 
                         <!-- Discovered Client ISPs List -->
                         <div id="webrtc-client-isps-list" class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div
-                                class="p-4 text-center text-zinc-500 text-xs border border-zinc-800/60 rounded-lg col-span-full">
+                            <div class="p-4 text-center text-zinc-500 text-xs border border-zinc-800/60 rounded-lg col-span-full">
                                 Probing client network interfaces & public ISPs via WebRTC ICE...
                             </div>
                         </div>
 
                         <!-- Failover Status Banner -->
-                        <div
-                            class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400 bg-black/40 rounded-lg p-2.5 border border-zinc-800/50">
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400 bg-black/40 rounded-lg p-2.5 border border-zinc-800/50">
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <span><strong>0-Second Failover Active:</strong> If any enabled ISP drops, the engine
-                                    automatically routes 100% of video over remaining healthy links.</span>
+                                <span><strong>0-Second Failover Active:</strong> If any enabled ISP drops, the engine automatically routes 100% of video over remaining healthy links.</span>
                             </div>
-                            <span id="webrtc-isp-count-badge" class="font-mono text-blue-400 font-bold">0 ISPs
-                                Discovered</span>
+                            <span id="webrtc-isp-count-badge" class="font-mono text-blue-400 font-bold">0 ISPs Discovered</span>
                         </div>
                     </div>
 
@@ -1954,12 +1783,10 @@
                     <div class="bg-zinc-950/80 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
                         <div class="flex justify-between items-center">
                             <div>
-                                <h4
-                                    class="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                                <h4 class="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
                                     <span>🖥️ Server Host Network Adapters</span>
                                 </h4>
-                                <p class="text-[11px] text-zinc-500">Physical and virtual network interfaces on the
-                                    Python broadcast backend machine.</p>
+                                <p class="text-[11px] text-zinc-500">Physical and virtual network interfaces on the Python broadcast backend machine.</p>
                             </div>
                             <button type="button" onclick="fetchNetworkInterfaces(true)"
                                 class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
@@ -1967,8 +1794,7 @@
                             </button>
                         </div>
                         <div id="system-network-interfaces-list" class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div
-                                class="p-3 text-center text-zinc-600 text-xs border border-zinc-800/60 rounded-lg col-span-full">
+                            <div class="p-3 text-center text-zinc-600 text-xs border border-zinc-800/60 rounded-lg col-span-full">
                                 Scanning network adapters...
                             </div>
                         </div>
@@ -2275,11 +2101,11 @@
                 const centerY = rect.top + rect.height / 2;
                 const mouseX = e.clientX - centerX;
                 const mouseY = e.clientY - centerY;
-
+                
                 // Max tilt 7 degrees for silky, subtle 3D response
                 targetX = (mouseY / (rect.height / 2 || 1)) * -6;
                 targetY = (mouseX / (rect.width / 2 || 1)) * 6;
-
+                
                 if (!reqId) {
                     reqId = requestAnimationFrame(updateDeckTransform);
                 }
@@ -2291,9 +2117,9 @@
 
                 currentX += (targetX - currentX) * 0.12;
                 currentY += (targetY - currentY) * 0.12;
-
+                
                 deckCard.style.transform = `rotateX(${currentX.toFixed(2)}deg) rotateY(${currentY.toFixed(2)}deg)`;
-
+                
                 if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
                     reqId = requestAnimationFrame(updateDeckTransform);
                 } else {
@@ -2467,7 +2293,7 @@
                 if (call.peerConnection) {
                     clearInterval(checkPC);
                     // Suppress spurious renegotiationneeded events that cause duplicate "Offer received for existing Connection ID"
-                    try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                    try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                     // Apply immediately, then retry a few times to ensure it sticks
                     const retry = setInterval(() => {
                         applyParams();
@@ -2505,7 +2331,7 @@
 
             // Clean up stale call before establishing a new one
             if (existingCall) {
-                try { existingCall.close(); } catch (_) { }
+                try { existingCall.close(); } catch (_) {}
                 delete window._activeOutgoingMediaCalls[callKey];
             }
 
@@ -2515,7 +2341,7 @@
                 call._created = Date.now();
 
                 if (call.peerConnection) {
-                    try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                    try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                 }
 
                 window._activeOutgoingMediaCalls[callKey] = call;
@@ -2550,14 +2376,14 @@
 
         function handlePeerDisconnect(conn) {
             if (!conn) return;
-            try { conn.close(); } catch (_) { }
+            try { conn.close(); } catch (_) {}
             p2pConnections = p2pConnections.filter(c => c !== conn && c.peer !== conn.peer);
 
             // Clean up any active media calls for this peer
             if (window._activeOutgoingMediaCalls) {
                 Object.keys(window._activeOutgoingMediaCalls).forEach(key => {
                     if (key.startsWith(`${conn.peer}_`)) {
-                        try { window._activeOutgoingMediaCalls[key].close(); } catch (_) { }
+                        try { window._activeOutgoingMediaCalls[key].close(); } catch (_) {}
                         delete window._activeOutgoingMediaCalls[key];
                     }
                 });
@@ -2785,7 +2611,7 @@
                     // Answer media calls from other controllers
                     peer.on('call', call => {
                         if (call.peerConnection) {
-                            try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                            try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                         }
                         try {
                             call.answer();
@@ -2793,7 +2619,7 @@
                             console.warn('[PeerJS] Call answer notice:', err?.message || err);
                         }
                         if (call.peerConnection) {
-                            try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                            try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                         }
                         window.activeMediaCalls = window.activeMediaCalls || [];
                         window.activeMediaCalls.push(call);
@@ -3529,7 +3355,7 @@
             const videoDeviceId = cameraSelect ? cameraSelect.value : null;
             const audioDeviceId = micSelect ? micSelect.value : null;
 
-            const isCaptureCard = cameraSelect && cameraSelect.selectedOptions && cameraSelect.selectedOptions[0] &&
+            const isCaptureCard = cameraSelect && cameraSelect.selectedOptions && cameraSelect.selectedOptions[0] && 
                 (cameraSelect.selectedOptions[0].text.includes('Capture') || cameraSelect.selectedOptions[0].text.includes('Cam Link') || cameraSelect.selectedOptions[0].text.includes('HDMI') || cameraSelect.selectedOptions[0].text.includes('🔌'));
 
             const constraints = {
@@ -3764,7 +3590,7 @@
                                     // Prevent Chrome from suspending background video playback
                                     media.addEventListener('pause', () => {
                                         if (window.layers[layer.id] && !window.layers[layer.id].paused && document.hidden) {
-                                            media.play().catch(() => { });
+                                            media.play().catch(() => {});
                                         }
                                     });
 
@@ -3884,7 +3710,7 @@
                             playPromise.then(() => {
                                 // If layer audio is desired unmuted, attempt unmuting once playing starts
                                 if (layer.audio && !layer.audio.muted) {
-                                    try { vid.muted = false; } catch (_) { }
+                                    try { vid.muted = false; } catch (_) {}
                                 }
                             }).catch(err => {
                                 vid.muted = true;
@@ -3899,7 +3725,7 @@
                     // Unmute on first user interaction if browser required interaction
                     const unmuteOnInteract = () => {
                         if (layer.audio && !layer.audio.muted && vid.muted) {
-                            try { vid.muted = false; } catch (_) { }
+                            try { vid.muted = false; } catch (_) {}
                         }
                     };
                     window.addEventListener('click', unmuteOnInteract, { once: true });
@@ -4436,7 +4262,7 @@
         };
 
         // Master Audio Mixer Layer Mute Toggle
-        window.toggleLayerMixerMute = function (layerId) {
+        window.toggleLayerMixerMute = function(layerId) {
             const layer = window.layers ? window.layers[layerId] : null;
             if (!layer) return;
             layer.audio = layer.audio || {};
@@ -5024,7 +4850,7 @@
                     }
                 }
                 if (playerAudioCtx && playerAudioCtx.state === 'suspended') {
-                    playerAudioCtx.resume().catch(() => { });
+                    playerAudioCtx.resume().catch(() => {});
                 }
                 if (playerAudioCtx && !playerAnalyserL) {
                     playerAnalyserL = playerAudioCtx.createAnalyser();
@@ -5488,11 +5314,11 @@
                     if (typeof requestScreenWakeLock === 'function') requestScreenWakeLock();
                     if (typeof startStudioAudioKeepAlive === 'function') startStudioAudioKeepAlive();
                     if (typeof playerAudioCtx !== 'undefined' && playerAudioCtx && playerAudioCtx.state === 'suspended') {
-                        playerAudioCtx.resume().catch(() => { });
+                        playerAudioCtx.resume().catch(() => {});
                     }
                     document.querySelectorAll('#player-layer-container video, #player-layer-container audio').forEach(m => {
                         if (m.paused && (m.srcObject || m.src)) {
-                            m.play().catch(() => { });
+                            m.play().catch(() => {});
                         }
                     });
                 }
@@ -5615,11 +5441,11 @@
                 // Receive incoming Camera Streams & Streamed Files from Host
                 peer.on('call', call => {
                     if (call.peerConnection) {
-                        try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                        try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                     }
                     call.answer();
                     if (call.peerConnection) {
-                        try { call.peerConnection.onnegotiationneeded = null; } catch (_) { }
+                        try { call.peerConnection.onnegotiationneeded = null; } catch (_) {}
                     }
 
                     window.activePlayerCalls = window.activePlayerCalls || [];
@@ -5767,7 +5593,7 @@
                         if (window.hostConnections) {
                             window.hostConnections.forEach(c => {
                                 if (c && c.open) {
-                                    try { c.send({ type: 'PONG', ts: msg.ts }); } catch (_) { }
+                                    try { c.send({ type: 'PONG', ts: msg.ts }); } catch (_) {}
                                 }
                             });
                         }
@@ -5892,13 +5718,13 @@
                 if (window.hostConnections) {
                     window.hostConnections.forEach(c => {
                         if (c && c.open) {
-                            try { c.send({ type: 'PLAYER_DISCONNECT' }); } catch (_) { }
-                            try { c.close(); } catch (_) { }
+                            try { c.send({ type: 'PLAYER_DISCONNECT' }); } catch (_) {}
+                            try { c.close(); } catch (_) {}
                         }
                     });
                 }
                 if (peer && !peer.destroyed) {
-                    try { peer.destroy(); } catch (_) { }
+                    try { peer.destroy(); } catch (_) {}
                 }
             };
             window.addEventListener('beforeunload', notifyHostDisconnect);
@@ -5995,7 +5821,7 @@
 
                     vid.addEventListener('pause', () => {
                         if (document.hidden && (vid.srcObject || vid.src)) {
-                            vid.play().catch(() => { });
+                            vid.play().catch(() => {});
                         }
                     });
 
@@ -6035,7 +5861,7 @@
                         if (layer.audio) { vid.volume = layer.audio.volume; vid.muted = layer.audio.muted; }
                         vid.addEventListener('pause', () => {
                             if (document.hidden && (vid.srcObject || vid.src)) {
-                                vid.play().catch(() => { });
+                                vid.play().catch(() => {});
                             }
                         });
                         vid.play().catch(e => console.log("Autoplay waiting..."));
@@ -6496,7 +6322,7 @@
                     stateMap[i.ip] = i.enabled;
                 });
                 localStorage.setItem('broadcast_isp_states', JSON.stringify(stateMap));
-            } catch (e) { }
+            } catch (e) {}
         }
 
         function loadISPPreferences() {
@@ -6640,7 +6466,7 @@
             try {
                 const iceCandidates = await harvestWebRTCCandidates(3500);
                 const results = await processDiscoveredCandidates(iceCandidates);
-
+                
                 // Restore user's manual enabled/disabled status for each discovered IP
                 results.forEach(item => {
                     if (prevStates.has(item.ip)) {
@@ -6664,8 +6490,8 @@
                 saveISPPreferences();
                 try {
                     localStorage.setItem('broadcast_cached_isps', JSON.stringify(discoveredClientISPs));
-                } catch (e) { }
-
+                } catch (e) {}
+                
                 renderDiscoveredISPCards();
                 startWebRTCHeartbeatMonitor();
 
@@ -7205,7 +7031,7 @@
 
         function releaseScreenWakeLock() {
             if (screenWakeLock) {
-                try { screenWakeLock.release(); } catch (e) { }
+                try { screenWakeLock.release(); } catch (e) {}
                 screenWakeLock = null;
             }
         }
@@ -7223,7 +7049,7 @@
             try {
                 if (window._audioKeepAliveStarted && window._audioKeepAliveCtx) {
                     if (window._audioKeepAliveCtx.state === 'suspended') {
-                        window._audioKeepAliveCtx.resume().catch(() => { });
+                        window._audioKeepAliveCtx.resume().catch(() => {});
                     }
                     return;
                 }
@@ -7254,12 +7080,12 @@
         // --- Universal Background Unthrottled Worker Engine (Prevents frame drops & freezes when tab is minimized/hidden) ---
         window._studioBackgroundCallbacks = new Map();
 
-        window.registerStudioBackgroundWorker = function (id, callback) {
+        window.registerStudioBackgroundWorker = function(id, callback) {
             window._studioBackgroundCallbacks.set(id, callback);
             initUniversalBackgroundWorker();
         };
 
-        window.unregisterStudioBackgroundWorker = function (id) {
+        window.unregisterStudioBackgroundWorker = function(id) {
             window._studioBackgroundCallbacks.delete(id);
         };
 
@@ -7281,7 +7107,7 @@
                 const blob = new Blob([workerScript], { type: 'application/javascript' });
                 const workerUrl = URL.createObjectURL(blob);
                 window._universalBackgroundWorker = new Worker(workerUrl);
-                window._universalBackgroundWorker.onmessage = function (e) {
+                window._universalBackgroundWorker.onmessage = function(e) {
                     if (e.data && e.data.type === 'tick') {
                         const now = performance.now();
                         // Dispatch tick to all registered background tasks
@@ -7301,7 +7127,7 @@
                 console.warn('[Studio] Web Worker background ticker fallback:', err);
                 setInterval(() => {
                     const now = performance.now();
-                    window._studioBackgroundCallbacks.forEach(cb => { try { cb(now); } catch (e) { } });
+                    window._studioBackgroundCallbacks.forEach(cb => { try { cb(now); } catch(e){} });
                     if (isLiveIngesting && document.hidden && typeof renderMasterBroadcastFrame === 'function') {
                         renderMasterBroadcastFrame(now);
                     }
@@ -7485,7 +7311,7 @@
             document.addEventListener(evt, unlockStudioAudioContext, { passive: true });
         });
 
-        window.toggleMasterAudioMute = function (forceMute) {
+        window.toggleMasterAudioMute = function(forceMute) {
             initMasterAudioContext();
             isMasterAudioMuted = (forceMute !== undefined) ? forceMute : !isMasterAudioMuted;
 
@@ -7515,7 +7341,7 @@
             }
         };
 
-        window.setMasterBroadcastVolume = function (val) {
+        window.setMasterBroadcastVolume = function(val) {
             initMasterAudioContext();
             masterAudioVolume = parseFloat(val);
             if (!isMasterAudioMuted && masterMainGainNode && masterAudioCtx) {
@@ -7533,7 +7359,7 @@
         };
 
         // ======== STUDIO MONITOR MUTE (Local listening only; player/stream still hear audio) ========
-        window.updateMonitorMuteUI = function () {
+        window.updateMonitorMuteUI = function() {
             const isMuted = window.isMonitorMuted;
 
             // 1. Toolbar button
@@ -7590,7 +7416,7 @@
         };
         setTimeout(() => { if (window.updateMonitorMuteUI) window.updateMonitorMuteUI(); }, 50);
 
-        window.toggleMonitorMute = function (forceMute) {
+        window.toggleMonitorMute = function(forceMute) {
             initMasterAudioContext();
             window.isMonitorMuted = (forceMute !== undefined) ? forceMute : !window.isMonitorMuted;
 
@@ -8245,7 +8071,7 @@
 
         // --- OLED Battery Saver / Stealth Blackout Mode ---
         let lastBlackoutTap = 0;
-        window.toggleOLEDBlackout = function (enable) {
+        window.toggleOLEDBlackout = function(enable) {
             const overlay = document.getElementById('oled-blackout-overlay');
             if (!overlay) return;
             if (enable === undefined) {
@@ -8290,7 +8116,7 @@
         window._audioMixerClosedByUser = false;
         window._layerStackClosedByUser = false;
 
-        window.openLayerStack = function () {
+        window.openLayerStack = function() {
             window._layerStackClosedByUser = false;
             const card = document.getElementById('layer-stack-card');
             const floatingBtn = document.getElementById('layer-stack-floating-btn');
@@ -8331,7 +8157,7 @@
             }
         };
 
-        window.closeLayerStack = function () {
+        window.closeLayerStack = function() {
             window._layerStackClosedByUser = true;
             const card = document.getElementById('layer-stack-card');
             const floatingBtn = document.getElementById('layer-stack-floating-btn');
@@ -8360,7 +8186,7 @@
             }
         };
 
-        window.toggleFloatingPanel = function (panelId) {
+        window.toggleFloatingPanel = function(panelId) {
             const panel = document.getElementById(panelId);
             if (!panel) return;
 
@@ -8396,7 +8222,7 @@
         };
 
         // ======== DRAGGABLE FLOATING PANELS (Layer Stack, Audio Mixer, Properties) ========
-        window.initDraggablePanel = function (cardId) {
+        window.initDraggablePanel = function(cardId) {
             const card = document.getElementById(cardId);
             if (!card) return;
             const handle = card.querySelector('.drag-handle') || card.firstElementChild;
@@ -8419,7 +8245,7 @@
                 handle.style.cursor = 'grabbing';
                 try {
                     handle.setPointerCapture(e.pointerId);
-                } catch (_) { }
+                } catch (_) {}
 
                 startX = e.clientX;
                 startY = e.clientY;
@@ -8475,7 +8301,7 @@
                     if (e && e.pointerId && handle.hasPointerCapture(e.pointerId)) {
                         handle.releasePointerCapture(e.pointerId);
                     }
-                } catch (_) { }
+                } catch (_) {}
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', endDrag);
                 window.removeEventListener('pointercancel', endDrag);
@@ -8485,7 +8311,7 @@
         };
 
         // Draggable floating icon for minimized Layer Stack
-        window.initDraggableFloatingIcon = function (btnId) {
+        window.initDraggableFloatingIcon = function(btnId) {
             const btn = document.getElementById(btnId);
             if (!btn) return;
 
@@ -8505,7 +8331,7 @@
                 initialLeft = rect.left;
                 initialTop = rect.top;
 
-                try { btn.setPointerCapture(e.pointerId); } catch (_) { }
+                try { btn.setPointerCapture(e.pointerId); } catch (_) {}
 
                 btn.style.left = `${initialLeft}px`;
                 btn.style.top = `${initialTop}px`;
@@ -8547,7 +8373,7 @@
                     if (e && e.pointerId && btn.hasPointerCapture(e.pointerId)) {
                         btn.releasePointerCapture(e.pointerId);
                     }
-                } catch (_) { }
+                } catch (_) {}
                 window.removeEventListener('pointermove', onPointerMove);
                 window.removeEventListener('pointerup', onPointerUp);
                 window.removeEventListener('pointercancel', onPointerUp);
@@ -8568,12 +8394,12 @@
         // Initialize drag on floating minimized icon
         window.initDraggableFloatingIcon('layer-stack-floating-btn');
 
-        window.openAddLayerModal = function () {
+        window.openAddLayerModal = function() {
             const modal = document.getElementById('add-layer-modal');
             if (modal) modal.classList.remove('hidden');
         };
 
-        window.closeAddLayerModal = function () {
+        window.closeAddLayerModal = function() {
             const modal = document.getElementById('add-layer-modal');
             if (modal) modal.classList.add('hidden');
         };
@@ -8585,7 +8411,7 @@
         let _camModalAnimId = null;
         window.activeCameraModalTab = 'browser';
 
-        window.switchToHttps = async function () {
+        window.switchToHttps = async function() {
             let targetPort = '8443';
             try {
                 const res = await fetch('/api/system/security');
@@ -8595,13 +8421,13 @@
                         targetPort = String(data.https_port);
                     }
                 }
-            } catch (_) { }
+            } catch (_) {}
 
             const targetUrl = `https://${location.hostname}:${targetPort}${location.pathname}${location.search}${location.hash}`;
             window.showHttpsCertGuide(targetUrl, targetPort);
         };
 
-        window.showHttpsCertGuide = function (targetUrl, targetPort) {
+        window.showHttpsCertGuide = function(targetUrl, targetPort) {
             let existing = document.getElementById('https-cert-guide-modal');
             if (existing) existing.remove();
 
@@ -8647,7 +8473,7 @@
             document.body.insertAdjacentHTML('beforeend', modalHtml);
         };
 
-        window.openCameraModal = async function () {
+        window.openCameraModal = async function() {
             const modal = document.getElementById('camera-modal');
             if (!modal) return;
             modal.classList.remove('hidden');
@@ -8668,7 +8494,7 @@
                                 btn.innerText = `🔒 Switch to HTTPS (Port ${data.https_port})`;
                             }
                         }
-                    } catch (_) { }
+                    } catch (_) {}
                 } else {
                     warn.classList.add('hidden');
                 }
@@ -8682,7 +8508,7 @@
             }
         };
 
-        window.closeCameraModal = function () {
+        window.closeCameraModal = function() {
             const modal = document.getElementById('camera-modal');
             if (modal) modal.classList.add('hidden');
             window.stopCameraModalPreview();
@@ -8693,7 +8519,7 @@
             }
         };
 
-        window.switchCameraSourceTab = async function (tab) {
+        window.switchCameraSourceTab = async function(tab) {
             window.activeCameraModalTab = tab;
             const tabBrowser = document.getElementById('cam-tab-browser');
             const tabHardware = document.getElementById('cam-tab-hardware');
@@ -8742,20 +8568,43 @@
             }
         };
 
-        window.loadHardwareDevices = async function () {
+        window.loadHardwareDevices = async function() {
             const select = document.getElementById('hardware-device-select');
             const info = document.getElementById('hardware-device-info');
             if (!select) return;
             select.innerHTML = '<option value="">Scanning hardware devices...</option>';
+            
+            // Check for Native Android USB OTG Capture Card first
+            let androidUsbDevice = null;
+            if (window.AndroidUsbBridge) {
+                try {
+                    if (window.AndroidUsbBridge.isUsbCameraConnected()) {
+                        androidUsbDevice = {
+                            id: 'android_usb',
+                            name: `🔌 Android USB Capture Card (${window.AndroidUsbBridge.getDeviceName()})`,
+                            backend: 'Android USB Host UVC',
+                            max_resolution: '1080p'
+                        };
+                    }
+                } catch (_) {}
+            }
+
             try {
                 const res = await fetch('/api/hardware/devices');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                const devices = data.devices || [];
+                let devices = [];
+                if (res.ok) {
+                    const data = await res.json();
+                    devices = data.devices || [];
+                }
+
+                if (androidUsbDevice) {
+                    devices.unshift(androidUsbDevice);
+                }
+
                 select.innerHTML = '';
                 if (devices.length === 0) {
                     select.innerHTML = '<option value="">No hardware capture devices found</option>';
-                    if (info) info.innerText = 'No USB webcams or HDMI capture cards detected on host PC.';
+                    if (info) info.innerText = 'No USB webcams or HDMI capture cards detected.';
                     const previewHw = document.getElementById('camera-modal-hardware-preview');
                     if (previewHw) previewHw.classList.add('hidden');
                     const placeholder = document.getElementById('camera-modal-preview-placeholder');
@@ -8769,26 +8618,40 @@
                     select.appendChild(opt);
                 });
                 if (info) {
-                    info.innerText = `Detected ${devices.length} host hardware capture device(s). Works over HTTP & HTTPS with 0 permissions.`;
+                    info.innerText = `Detected ${devices.length} hardware capture device(s). Works over HTTP & HTTPS with 0 permissions.`;
                 }
                 window.previewHardwareDevice(select.value);
             } catch (err) {
                 console.warn("Failed to load hardware devices:", err);
-                select.innerHTML = '<option value="">Host hardware service offline</option>';
-                if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
+                select.innerHTML = '';
+                if (androidUsbDevice) {
+                    const opt = document.createElement('option');
+                    opt.value = androidUsbDevice.id;
+                    opt.textContent = `${androidUsbDevice.name} (${androidUsbDevice.backend})`;
+                    select.appendChild(opt);
+                    if (info) info.innerText = 'Native Android USB UVC Capture Card Active.';
+                    window.previewHardwareDevice('android_usb');
+                } else {
+                    select.innerHTML = '<option value="">Host hardware service offline</option>';
+                    if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
+                }
             }
         };
 
-        window.previewHardwareDevice = function (deviceId) {
+        window.previewHardwareDevice = function(deviceId) {
             const previewHw = document.getElementById('camera-modal-hardware-preview');
             const placeholder = document.getElementById('camera-modal-preview-placeholder');
             if (!previewHw || (deviceId === '' || deviceId === null || deviceId === undefined)) return;
-            previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
+            if (deviceId === 'android_usb' && window.AndroidUsbBridge) {
+                previewHw.src = window.AndroidUsbBridge.getStreamUrl();
+            } else {
+                previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
+            }
             previewHw.classList.remove('hidden');
             if (placeholder) placeholder.classList.add('hidden');
         };
 
-        window.startCameraModalPreview = async function () {
+        window.startCameraModalPreview = async function() {
             window.stopCameraModalPreview();
 
             const cameraSelect = document.getElementById('camera-select');
@@ -8866,7 +8729,7 @@
             }
         };
 
-        window.stopCameraModalPreview = function () {
+        window.stopCameraModalPreview = function() {
             if (_camModalAnimId) {
                 cancelAnimationFrame(_camModalAnimId);
                 _camModalAnimId = null;
@@ -8880,7 +8743,7 @@
                 _camModalMicStream = null;
             }
             if (_camModalAudioCtx && _camModalAudioCtx.state !== 'closed') {
-                _camModalAudioCtx.close().catch(() => { });
+                _camModalAudioCtx.close().catch(() => {});
                 _camModalAudioCtx = null;
             }
             const previewVideo = document.getElementById('camera-modal-preview');
@@ -8889,7 +8752,7 @@
             if (meterFill) meterFill.style.width = '0%';
         };
 
-        window.confirmAddCameraLayer = function () {
+        window.confirmAddCameraLayer = window.confirmAddCameraFromModal = function() {
             const modal = document.getElementById('camera-modal');
             if (window.activeCameraModalTab === 'hardware') {
                 const select = document.getElementById('hardware-device-select');
@@ -8903,12 +8766,16 @@
                 if (previewHw) previewHw.src = "";
                 if (modal) modal.classList.add('hidden');
 
+                const isAndroidUsb = deviceId === 'android_usb' && window.AndroidUsbBridge;
+                const streamSrc = isAndroidUsb ? window.AndroidUsbBridge.getStreamUrl() : `/api/hardware/stream/${deviceId}`;
+                const layerTitle = isAndroidUsb ? `🔌 USB Card (${window.AndroidUsbBridge.getDeviceName()})` : (selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`);
+
                 const layer = {
                     id: 'layer_' + Date.now(),
                     type: 'camera',
                     isHardwareStream: true,
-                    src: `/api/hardware/stream/${deviceId}`,
-                    title: selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`,
+                    src: streamSrc,
+                    title: layerTitle,
                     x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(),
                     audio: { volume: 1, muted: false }
                 };
@@ -8945,8 +8812,8 @@
                 const camModal = document.getElementById('camera-modal');
                 const addLayerModal = document.getElementById('add-layer-modal');
                 return (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
-                    (camModal && !camModal.classList.contains('hidden')) ||
-                    (addLayerModal && !addLayerModal.classList.contains('hidden'));
+                       (camModal && !camModal.classList.contains('hidden')) ||
+                       (addLayerModal && !addLayerModal.classList.contains('hidden'));
             }
 
             function showDocks() {
@@ -9071,9 +8938,9 @@
                 // Determine best dock placement relative to parent container
                 const pos = el.getAttribute('data-tooltip-pos') ||
                     (el.closest('#v2-dock-left') ? 'right' :
-                        el.closest('#v2-dock-right') ? 'left' :
-                            el.closest('#v2-dock-top') ? 'bottom' :
-                                el.closest('#v2-dock-bottom') ? 'top' : 'top');
+                     el.closest('#v2-dock-right') ? 'left' :
+                     el.closest('#v2-dock-top') ? 'bottom' :
+                     el.closest('#v2-dock-bottom') ? 'top' : 'top');
 
                 if (pos === 'right') {
                     left = targetRect.right + padding;
@@ -9178,7 +9045,7 @@
                     const y = (e.clientY - rect.top) / rect.height - 0.5;
                     targetX = 2 + (-y * 5);
                     targetY = x * 6;
-
+                    
                     if (!reqId) {
                         reqId = requestAnimationFrame(updateTilt);
                     }
@@ -9196,7 +9063,7 @@
                     currentX += (targetX - currentX) * 0.1;
                     currentY += (targetY - currentY) * 0.1;
                     deck.style.transform = `perspective(1200px) rotateX(${currentX.toFixed(2)}deg) rotateY(${currentY.toFixed(2)}deg) translateZ(10px)`;
-
+                    
                     if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
                         reqId = requestAnimationFrame(updateTilt);
                     } else {
@@ -9224,8 +9091,7 @@
     </div>
 
     <!-- OLED Battery Saver / Stealth Blackout Overlay (0% Pixel Power on OLED) -->
-    <div id="oled-blackout-overlay"
-        class="fixed inset-0 bg-black z-[999999] hidden flex-col items-center justify-between p-8 select-none cursor-pointer"
+    <div id="oled-blackout-overlay" class="fixed inset-0 bg-black z-[999999] hidden flex-col items-center justify-between p-8 select-none cursor-pointer"
         ondblclick="toggleOLEDBlackout(false)">
         <div class="text-zinc-800 text-[10px] font-mono tracking-widest uppercase">
             ● OLED Battery Saver (0% Screen Power)
@@ -9235,8 +9101,7 @@
             <div class="text-xs font-mono text-zinc-400 uppercase tracking-widest">
                 Live Broadcast In Progress
             </div>
-            <div
-                class="text-[11px] text-zinc-500 bg-zinc-950 px-4 py-2 rounded-full border border-zinc-900 shadow-inner">
+            <div class="text-[11px] text-zinc-500 bg-zinc-950 px-4 py-2 rounded-full border border-zinc-900 shadow-inner">
                 Double-tap screen or press ESC to unlock
             </div>
         </div>

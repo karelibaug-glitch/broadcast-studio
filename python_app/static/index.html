@@ -17,6 +17,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="stylesheet" href="css/tailwind.min.css">
     <script src="js/peerjs.min.js"></script>
+    <script src="js/modules/server-connect.js"></script>
     <script>
         // WebRTC Glare & Redundant Remote Answer Shield
         // Shields against InvalidStateError when duplicate or glare remote answers arrive in stable/closed state
@@ -8572,15 +8573,38 @@
             const info = document.getElementById('hardware-device-info');
             if (!select) return;
             select.innerHTML = '<option value="">Scanning hardware devices...</option>';
+            
+            // Check for Native Android USB OTG Capture Card first
+            let androidUsbDevice = null;
+            if (window.AndroidUsbBridge) {
+                try {
+                    if (window.AndroidUsbBridge.isUsbCameraConnected()) {
+                        androidUsbDevice = {
+                            id: 'android_usb',
+                            name: `🔌 Android USB Capture Card (${window.AndroidUsbBridge.getDeviceName()})`,
+                            backend: 'Android USB Host UVC',
+                            max_resolution: '1080p'
+                        };
+                    }
+                } catch (_) {}
+            }
+
             try {
                 const res = await fetch('/api/hardware/devices');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                const devices = data.devices || [];
+                let devices = [];
+                if (res.ok) {
+                    const data = await res.json();
+                    devices = data.devices || [];
+                }
+
+                if (androidUsbDevice) {
+                    devices.unshift(androidUsbDevice);
+                }
+
                 select.innerHTML = '';
                 if (devices.length === 0) {
                     select.innerHTML = '<option value="">No hardware capture devices found</option>';
-                    if (info) info.innerText = 'No USB webcams or HDMI capture cards detected on host PC.';
+                    if (info) info.innerText = 'No USB webcams or HDMI capture cards detected.';
                     const previewHw = document.getElementById('camera-modal-hardware-preview');
                     if (previewHw) previewHw.classList.add('hidden');
                     const placeholder = document.getElementById('camera-modal-preview-placeholder');
@@ -8594,13 +8618,23 @@
                     select.appendChild(opt);
                 });
                 if (info) {
-                    info.innerText = `Detected ${devices.length} host hardware capture device(s). Works over HTTP & HTTPS with 0 permissions.`;
+                    info.innerText = `Detected ${devices.length} hardware capture device(s). Works over HTTP & HTTPS with 0 permissions.`;
                 }
                 window.previewHardwareDevice(select.value);
             } catch (err) {
                 console.warn("Failed to load hardware devices:", err);
-                select.innerHTML = '<option value="">Host hardware service offline</option>';
-                if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
+                select.innerHTML = '';
+                if (androidUsbDevice) {
+                    const opt = document.createElement('option');
+                    opt.value = androidUsbDevice.id;
+                    opt.textContent = `${androidUsbDevice.name} (${androidUsbDevice.backend})`;
+                    select.appendChild(opt);
+                    if (info) info.innerText = 'Native Android USB UVC Capture Card Active.';
+                    window.previewHardwareDevice('android_usb');
+                } else {
+                    select.innerHTML = '<option value="">Host hardware service offline</option>';
+                    if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
+                }
             }
         };
 
@@ -8608,7 +8642,11 @@
             const previewHw = document.getElementById('camera-modal-hardware-preview');
             const placeholder = document.getElementById('camera-modal-preview-placeholder');
             if (!previewHw || (deviceId === '' || deviceId === null || deviceId === undefined)) return;
-            previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
+            if (deviceId === 'android_usb' && window.AndroidUsbBridge) {
+                previewHw.src = window.AndroidUsbBridge.getStreamUrl();
+            } else {
+                previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
+            }
             previewHw.classList.remove('hidden');
             if (placeholder) placeholder.classList.add('hidden');
         };
@@ -8714,7 +8752,7 @@
             if (meterFill) meterFill.style.width = '0%';
         };
 
-        window.confirmAddCameraLayer = function() {
+        window.confirmAddCameraLayer = window.confirmAddCameraFromModal = function() {
             const modal = document.getElementById('camera-modal');
             if (window.activeCameraModalTab === 'hardware') {
                 const select = document.getElementById('hardware-device-select');
@@ -8728,12 +8766,16 @@
                 if (previewHw) previewHw.src = "";
                 if (modal) modal.classList.add('hidden');
 
+                const isAndroidUsb = deviceId === 'android_usb' && window.AndroidUsbBridge;
+                const streamSrc = isAndroidUsb ? window.AndroidUsbBridge.getStreamUrl() : `/api/hardware/stream/${deviceId}`;
+                const layerTitle = isAndroidUsb ? `🔌 USB Card (${window.AndroidUsbBridge.getDeviceName()})` : (selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`);
+
                 const layer = {
                     id: 'layer_' + Date.now(),
                     type: 'camera',
                     isHardwareStream: true,
-                    src: `/api/hardware/stream/${deviceId}`,
-                    title: selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`,
+                    src: streamSrc,
+                    title: layerTitle,
                     x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(),
                     audio: { volume: 1, muted: false }
                 };
