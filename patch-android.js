@@ -39,16 +39,11 @@ if (fs.existsSync(manifestPath)) {
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.external" android:required="false" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 `;
 
     if (!content.includes('android.permission.RECORD_AUDIO')) {
         content = content.replace('<application', `${permissions}\n    <application`);
-    }
-
-    if (!content.includes('android.hardware.camera.external')) {
-        content = content.replace('</manifest>', `    <uses-feature android:name="android.hardware.camera.external" android:required="false" />\n</manifest>`);
     }
 
     // Add hardware acceleration, cleartext traffic & network security config
@@ -460,7 +455,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Message;
 import android.util.Log;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -491,8 +485,6 @@ public class MainActivity extends BridgeActivity {
             settings.setAllowFileAccess(true);
             settings.setAllowContentAccess(true);
             settings.setDatabaseEnabled(true);
-            settings.setSupportMultipleWindows(false);
-            settings.setJavaScriptCanOpenWindowsAutomatically(true);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             }
@@ -508,17 +500,6 @@ public class MainActivity extends BridgeActivity {
                     runOnUiThread(() -> {
                         request.grant(request.getResources());
                     });
-                }
-
-                @Override
-                public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-                    WebView.HitTestResult result = view.getHitTestResult();
-                    String data = result != null ? result.getExtra() : null;
-                    if (data != null && !data.isEmpty()) {
-                        view.loadUrl(data);
-                        return true;
-                    }
-                    return false;
                 }
             });
         }

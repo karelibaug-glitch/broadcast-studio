@@ -154,7 +154,6 @@
         console.log('[AndroidUsbBridge] USB Device Detected:', deviceName);
         ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
-        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
@@ -162,7 +161,6 @@
         console.log('[AndroidUsbBridge] USB Permission Granted for:', deviceName);
         ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
-        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
@@ -173,17 +171,16 @@
     window.onUsbDeviceDetached = function () {
         console.log('[AndroidUsbBridge] USB Device Detached');
         if (window.updateDeviceList) window.updateDeviceList();
-        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
     window.onUsbStreamReady = function (streamUrl) {
-        console.log('[AndroidUsbBridge] USB Stream Ready:', streamUrl);
+        console.log('[AndroidUsbBridge] USB MJPEG Stream Ready:', streamUrl);
     };
 
     // Injects USB Capture Card option directly into all camera selects
     function ensureUsbOptionInSelects() {
-        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select, select#camera-device-select');
+        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select');
         selects.forEach(select => {
             let devName = 'USB Capture Card / HDMI In';
             if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
@@ -193,7 +190,7 @@
                 } catch (_) { }
             }
 
-            const exists = Array.from(select.options).some(o => o.value === 'android_usb' || /usb|capture|uvc/i.test(o.text));
+            const exists = Array.from(select.options).some(o => o.value === 'android_usb');
             if (!exists) {
                 const opt = document.createElement('option');
                 opt.value = 'android_usb';
@@ -220,17 +217,14 @@
                     }
                 } catch (_) { }
 
-                const hasHardwareUsb = list.some(d => d.kind === 'videoinput' && /usb|capture|uvc|external|hdmi/i.test(d.label));
-                if (!hasHardwareUsb) {
-                    const alreadyInList = list.some(d => d.deviceId === 'android_usb');
-                    if (!alreadyInList) {
-                        list.unshift({
-                            deviceId: 'android_usb',
-                            kind: 'videoinput',
-                            label: `🔌 ${devName}`,
-                            groupId: 'android_usb_group'
-                        });
-                    }
+                const alreadyInList = list.some(d => d.deviceId === 'android_usb');
+                if (!alreadyInList) {
+                    list.unshift({
+                        deviceId: 'android_usb',
+                        kind: 'videoinput',
+                        label: `🔌 ${devName}`,
+                        groupId: 'android_usb_group'
+                    });
                 }
                 return list;
             };
@@ -251,35 +245,109 @@
                         window.AndroidUsbBridge.requestUsbCameraPermission();
                     }
 
-                    // 1. First attempt to find hardware external / USB camera registered in Camera2
-                    try {
-                        const rawDevices = await origEnumerate();
-                        const usbDev = rawDevices.find(d => d.kind === 'videoinput' && d.deviceId !== 'android_usb' && /usb|capture|uvc|external|hdmi/i.test(d.label));
-                        if (usbDev && usbDev.deviceId) {
-                            const newConstraints = Object.assign({}, constraints, {
-                                video: {
-                                    deviceId: { exact: usbDev.deviceId },
-                                    width: { ideal: 1920 },
-                                    height: { ideal: 1080 }
+                    // Try 1: Use native UVC MediaStream if the Android bridge provides one
+                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getUvcMediaStream === 'function') {
+                        try {
+                            const nativeStream = window.AndroidUsbBridge.getUvcMediaStream();
+                            if (nativeStream) {
+                                if (constraints && constraints.audio) {
+                                    try {
+                                        const audioStream = await origGetUserMedia({ audio: constraints.audio });
+                                        audioStream.getAudioTracks().forEach(t => nativeStream.addTrack(t));
+                                    } catch (_) { }
                                 }
-                            });
-                            return await origGetUserMedia(newConstraints);
-                        }
-                    } catch (_) { }
-
-                    // 2. Fallback to high-quality camera stream with audio
-                    try {
-                        const fallbackConstraints = Object.assign({}, constraints, {
-                            video: {
-                                facingMode: { ideal: 'environment' },
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 }
+                                return nativeStream;
                             }
-                        });
-                        return await origGetUserMedia(fallbackConstraints);
-                    } catch (_) {
-                        return await origGetUserMedia(Object.assign({}, constraints, { video: true }));
+                        } catch (_) { }
                     }
+
+                    // Try 2: Use native camera real deviceId if available from the bridge
+                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getNativeDeviceId === 'function') {
+                        try {
+                            const nativeDevId = window.AndroidUsbBridge.getNativeDeviceId();
+                            if (nativeDevId && nativeDevId !== 'android_usb') {
+                                const nativeConstraints = Object.assign({}, constraints);
+                                nativeConstraints.video = Object.assign({}, typeof constraints.video === 'object' ? constraints.video : {});
+                                nativeConstraints.video.deviceId = { exact: nativeDevId };
+                                return await origGetUserMedia(nativeConstraints);
+                            }
+                        } catch (_) { }
+                    }
+
+                    // Try 3: Create MediaStream from MJPEG HTTP stream via hidden <video> element + Canvas
+                    // This is the fallback for MJPEG streams from USB capture card servers.
+                    const streamUrl = window.getAndroidUsbStreamUrl();
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1280;
+                    canvas.height = 720;
+                    const ctx = canvas.getContext('2d');
+
+                    // Use hidden <img> — browsers auto-refresh MJPEG through <img> tags
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+
+                    // Continuously reload the MJPEG image at ~30fps to decode new frames
+                    let animId = null;
+                    let isActive = true;
+                    let lastSrc = '';
+                    let frameCount = 0;
+
+                    function drawLoop() {
+                        if (!isActive) return;
+                        // Draw current frame if image has loaded
+                        if (img.complete && img.naturalWidth > 0) {
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        }
+                        animId = requestAnimationFrame(drawLoop);
+                    }
+
+                    // Refresh MJPEG frame via new img.src load (for MJPEG over HTTP)
+                    function refreshMjpegFrame() {
+                        if (!isActive) return;
+                        const newImg = new Image();
+                        newImg.crossOrigin = 'anonymous';
+                        newImg.onload = function () {
+                            if (!isActive) return;
+                            ctx.drawImage(newImg, 0, 0, canvas.width, canvas.height);
+                        };
+                        // Cache bust to force a new frame fetch from MJPEG boundary
+                        newImg.src = streamUrl + (streamUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+                    }
+
+                    // Initial image load for MJPEG (browser may handle as a stream natively)
+                    img.onload = function () {
+                        if (!isActive) return;
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = streamUrl;
+
+                    drawLoop();
+
+                    // Also poll for new frames at ~24fps for MJPEG refresh fallback
+                    const frameTimer = setInterval(refreshMjpegFrame, 42);
+
+                    const stream = canvas.captureStream(30);
+
+                    if (constraints && constraints.audio) {
+                        try {
+                            const audioStream = await origGetUserMedia({ audio: constraints.audio });
+                            audioStream.getAudioTracks().forEach(t => stream.addTrack(t));
+                        } catch (_) { }
+                    }
+
+                    // Override stop to clean up resources
+                    const videoTrack = stream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        const origStop = videoTrack.stop.bind(videoTrack);
+                        videoTrack.stop = function () {
+                            isActive = false;
+                            if (animId) cancelAnimationFrame(animId);
+                            clearInterval(frameTimer);
+                            img.src = '';
+                            origStop();
+                        };
+                    }
+                    return stream;
                 }
                 return origGetUserMedia(constraints);
             };
@@ -298,31 +366,55 @@
         if (banner) banner.remove();
         updateServerBadgeUI();
 
-        const roomId = (typeof getStudioId === 'function') ? getStudioId() : (localStorage.getItem('broadcast_studio_id') || '10001');
+        const roomId = localStorage.getItem('broadcast_studio_id') || '10001';
 
         if (target === 'controller' || target === '#controller') {
             const currentPath = window.location.pathname;
-            const targetHash = '#controller?room=' + roomId;
-            if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
-                window.location.hash = targetHash;
-                if (typeof handleRouting === 'function') {
-                    handleRouting();
+            const isOnIndexPage = currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') ||
+                                  currentPath.endsWith('/') || currentPath === '' ||
+                                  currentPath.indexOf('index') !== -1;
+            if (isOnIndexPage) {
+                // Set hash then call handleRouting if available, else trigger hashchange
+                if (window.location.hash !== '#controller?room=' + roomId) {
+                    window.location.hash = '#controller?room=' + roomId;
+                } else {
+                    // Already on correct hash, just call routing
+                    if (typeof window.handleRouting === 'function') {
+                        window.handleRouting();
+                    }
                 }
+                // Also call handleRouting directly in case hashchange doesn't fire
+                setTimeout(function () {
+                    if (typeof window.handleRouting === 'function') {
+                        window.handleRouting();
+                    }
+                }, 100);
             } else {
-                window.location.href = 'index_v2.html' + targetHash;
+                window.location.href = window.location.origin + '/index.html#controller?room=' + roomId;
             }
         } else if (target === 'player' || target === '#player') {
             const currentPath = window.location.pathname;
-            const targetHash = '#player?room=' + roomId;
-            if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
-                window.location.hash = targetHash;
-                if (typeof handleRouting === 'function') {
-                    handleRouting();
+            const isOnIndexPage = currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') ||
+                                  currentPath.endsWith('/') || currentPath === '' ||
+                                  currentPath.indexOf('index') !== -1;
+            if (isOnIndexPage) {
+                if (window.location.hash !== '#player?room=' + roomId) {
+                    window.location.hash = '#player?room=' + roomId;
+                } else {
+                    if (typeof window.handleRouting === 'function') {
+                        window.handleRouting();
+                    }
                 }
+                setTimeout(function () {
+                    if (typeof window.handleRouting === 'function') {
+                        window.handleRouting();
+                    }
+                }, 100);
             } else {
-                window.location.href = 'index_v2.html' + targetHash;
+                window.location.href = window.location.origin + '/index.html#player?room=' + roomId;
             }
         } else {
+            // For director_suite.html, switcher.html, guest.html — relative navigation
             window.location.href = target;
         }
     };
