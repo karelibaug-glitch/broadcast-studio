@@ -14,6 +14,8 @@ const deviceFilterXml = `<?xml version="1.0" encoding="utf-8"?>
     <!-- USB Video Class (UVC) Capture Cards & Webcams (Class 14 / 0x0E) -->
     <usb-device class="14" />
     <usb-device class="239" subclass="2" />
+    <usb-device class="0" />
+    <usb-device />
 </resources>
 `;
 fs.writeFileSync(path.join(resXmlDir, 'device_filter.xml'), deviceFilterXml, 'utf8');
@@ -31,19 +33,26 @@ if (fs.existsSync(manifestPath)) {
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 `;
 
     if (!content.includes('android.permission.RECORD_AUDIO')) {
         content = content.replace('<application', `${permissions}\n    <application`);
     }
 
-    // Add hardware acceleration & cleartext traffic for local 127.0.0.1 streaming
-    content = content.replace('<application', '<application android:hardwareAccelerated="true" android:usesCleartextTraffic="true"');
+    // Add hardware acceleration, cleartext traffic & network security config
+    if (!content.includes('android:usesCleartextTraffic="true"')) {
+        content = content.replace('<application', '<application android:hardwareAccelerated="true" android:usesCleartextTraffic="true"');
+    }
 
     // Add USB device attached intent filter to MainActivity
     const usbIntentFilter = `
@@ -60,7 +69,7 @@ if (fs.existsSync(manifestPath)) {
     }
 
     fs.writeFileSync(manifestPath, content, 'utf8');
-    console.log('✓ Successfully patched AndroidManifest.xml with USB Host Intent Filters');
+    console.log('✓ Successfully patched AndroidManifest.xml with USB Host Intent Filters & Permissions');
 } else {
     console.warn('AndroidManifest.xml not found at:', manifestPath);
 }
@@ -125,6 +134,7 @@ public class UsbCameraBridge {
                     if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                         if (device != null) {
                             Log.d(TAG, "USB Permission GRANTED for device: " + device.getDeviceName());
+                            connectedDevice = device;
                             startCapture(device);
                             notifyWebView("onUsbPermissionGranted", device.getDeviceName());
                         }
@@ -155,7 +165,7 @@ public class UsbCameraBridge {
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
         } else {
             context.registerReceiver(usbReceiver, filter);
         }
@@ -165,11 +175,18 @@ public class UsbCameraBridge {
     }
 
     public void checkAndDetectDevice() {
+        if (usbManager == null) return;
         HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+        Log.d(TAG, "Scanning USB devices count: " + (deviceList != null ? deviceList.size() : 0));
+        if (deviceList == null || deviceList.isEmpty()) {
+            connectedDevice = null;
+            return;
+        }
+
         for (UsbDevice device : deviceList.values()) {
             if (isUvcDevice(device)) {
                 connectedDevice = device;
-                Log.d(TAG, "UVC Capture Card Detected: " + device.getDeviceName() + " (Vendor: " + device.getVendorId() + ")");
+                Log.d(TAG, "UVC Capture Card Detected: " + device.getDeviceName() + " (Vendor: " + device.getVendorId() + " Product: " + device.getProductId() + ")");
                 notifyWebView("onUsbDeviceDetected", device.getDeviceName());
                 if (!hasUsbPermission()) {
                     requestUsbCameraPermission();
@@ -182,11 +199,26 @@ public class UsbCameraBridge {
     }
 
     private boolean isUvcDevice(UsbDevice device) {
-        if (device.getDeviceClass() == UsbConstants.USB_CLASS_VIDEO) return true;
-        for (int i = 0; i < device.getInterfaceCount(); i++) {
+        if (device == null) return false;
+        int devClass = device.getDeviceClass();
+        if (devClass == UsbConstants.USB_CLASS_VIDEO || devClass == 239) return true;
+
+        int count = device.getInterfaceCount();
+        for (int i = 0; i < count; i++) {
             UsbInterface iface = device.getInterface(i);
-            if (iface.getInterfaceClass() == UsbConstants.USB_CLASS_VIDEO || iface.getInterfaceClass() == 239) {
+            int ifaceClass = iface.getInterfaceClass();
+            if (ifaceClass == UsbConstants.USB_CLASS_VIDEO || ifaceClass == 14 || ifaceClass == 239) {
                 return true;
+            }
+        }
+
+        // Fallback for composite HDMI capture cards (e.g. MS2109) with audio/video endpoints
+        if (devClass != UsbConstants.USB_CLASS_HUB && devClass != UsbConstants.USB_CLASS_MASS_STORAGE && devClass != UsbConstants.USB_CLASS_HID) {
+            for (int i = 0; i < count; i++) {
+                UsbInterface iface = device.getInterface(i);
+                if (iface.getInterfaceClass() == UsbConstants.USB_CLASS_AUDIO) {
+                    return true;
+                }
             }
         }
         return false;
@@ -194,12 +226,15 @@ public class UsbCameraBridge {
 
     @JavascriptInterface
     public boolean isUsbCameraConnected() {
+        if (connectedDevice == null) {
+            checkAndDetectDevice();
+        }
         return connectedDevice != null;
     }
 
     @JavascriptInterface
     public boolean hasUsbPermission() {
-        return connectedDevice != null && usbManager.hasPermission(connectedDevice);
+        return connectedDevice != null && usbManager != null && usbManager.hasPermission(connectedDevice);
     }
 
     @JavascriptInterface
@@ -207,11 +242,28 @@ public class UsbCameraBridge {
         if (connectedDevice == null) {
             checkAndDetectDevice();
         }
-        if (connectedDevice != null && !usbManager.hasPermission(connectedDevice)) {
+        if (connectedDevice != null && usbManager != null && !usbManager.hasPermission(connectedDevice)) {
             int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
-            PendingIntent pi = PendingIntent.getBroadcast(context, 0, new Intent(ACTION_USB_PERMISSION), flags);
+            Intent intent = new Intent(ACTION_USB_PERMISSION);
+            intent.setPackage(context.getPackageName());
+            PendingIntent pi = PendingIntent.getBroadcast(context, 0, intent, flags);
             usbManager.requestPermission(connectedDevice, pi);
+            Log.d(TAG, "Requested USB hardware permission dialog for: " + connectedDevice.getDeviceName());
         }
+    }
+
+    @JavascriptInterface
+    public void requestAppPermissions() {
+        if (context instanceof MainActivity) {
+            ((MainActivity) context).runOnUiThread(() -> {
+                ((MainActivity) context).checkAndRequestPermissions();
+            });
+        }
+    }
+
+    @JavascriptInterface
+    public void scanDevices() {
+        checkAndDetectDevice();
     }
 
     @JavascriptInterface
@@ -221,7 +273,12 @@ public class UsbCameraBridge {
 
     @JavascriptInterface
     public String getDeviceName() {
-        return connectedDevice != null ? connectedDevice.getDeviceName() : "No USB Card";
+        if (connectedDevice != null) {
+            String name = connectedDevice.getProductName();
+            if (name != null && !name.trim().isEmpty()) return name;
+            return connectedDevice.getDeviceName();
+        }
+        return "USB Video Capture Card";
     }
 
     private void startCapture(UsbDevice device) {
@@ -236,7 +293,7 @@ public class UsbCameraBridge {
             // Find Video Streaming Interface and Endpoint
             for (int i = 0; i < device.getInterfaceCount(); i++) {
                 UsbInterface iface = device.getInterface(i);
-                if (iface.getInterfaceClass() == UsbConstants.USB_CLASS_VIDEO && iface.getInterfaceSubclass() == 2) {
+                if (iface.getInterfaceClass() == UsbConstants.USB_CLASS_VIDEO || iface.getInterfaceClass() == 14 || iface.getInterfaceClass() == 239) {
                     streamingInterface = iface;
                     connection.claimInterface(streamingInterface, true);
                     for (int j = 0; j < iface.getEndpointCount(); j++) {
@@ -246,7 +303,7 @@ public class UsbCameraBridge {
                             break;
                         }
                     }
-                    break;
+                    if (streamingEndpoint != null) break;
                 }
             }
 
@@ -382,6 +439,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -393,6 +451,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "MainActivity";
     private static final int PERMISSION_REQ_CODE = 101;
     private UsbCameraBridge usbCameraBridge;
 
@@ -400,32 +459,52 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 1. Explicitly prompt user for OS Runtime Permissions on App Launch
-        checkAndRequestPermissions();
-
-        // 2. Configure WebView for WebRTC media streams and audio capture
+        // Configure WebView for WebRTC media streams and audio capture
         WebView webView = getBridge().getWebView();
-        WebSettings settings = webView.getSettings();
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setDatabaseEnabled(true);
-
-        // 3. Attach Native USB UVC Camera Bridge to WebView
-        usbCameraBridge = new UsbCameraBridge(this, webView);
-        webView.addJavascriptInterface(usbCameraBridge, "AndroidUsbBridge");
-
-        // 4. Auto-grant WebRTC Camera & Microphone requests inside WebView
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> {
-                    request.grant(request.getResources());
-                });
+        if (webView != null) {
+            WebSettings settings = webView.getSettings();
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(true);
+            settings.setDatabaseEnabled(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             }
-        });
+
+            // Attach Native USB UVC Camera Bridge to WebView
+            usbCameraBridge = new UsbCameraBridge(this, webView);
+            webView.addJavascriptInterface(usbCameraBridge, "AndroidUsbBridge");
+
+            // Auto-grant WebRTC Camera & Microphone requests inside WebView
+            webView.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    runOnUiThread(() -> {
+                        request.grant(request.getResources());
+                    });
+                }
+            });
+        }
+
+        // Prompt user for OS Runtime Permissions on App Launch
+        checkAndRequestPermissions();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        checkAndRequestPermissions();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        checkAndRequestPermissions();
+        if (usbCameraBridge != null) {
+            usbCameraBridge.checkAndDetectDevice();
+        }
     }
 
     @Override
@@ -436,7 +515,25 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void checkAndRequestPermissions() {
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQ_CODE) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            Log.d(TAG, "Runtime permissions result - all granted: " + allGranted);
+            if (usbCameraBridge != null) {
+                usbCameraBridge.checkAndDetectDevice();
+            }
+        }
+    }
+
+    public void checkAndRequestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             String[] requiredPermissions = new String[]{
                 Manifest.permission.CAMERA,
@@ -452,6 +549,7 @@ public class MainActivity extends BridgeActivity {
             }
 
             if (!listPermissionsNeeded.isEmpty()) {
+                Log.d(TAG, "Requesting missing permissions from OS: " + listPermissionsNeeded.size());
                 ActivityCompat.requestPermissions(
                     this,
                     listPermissionsNeeded.toArray(new String[0]),
@@ -465,4 +563,3 @@ public class MainActivity extends BridgeActivity {
 fs.writeFileSync(mainActivityPath, mainActivityCode, 'utf8');
 console.log('✓ Successfully patched MainActivity.java');
 console.log('--- Native Android USB UVC & WebRTC Bridge Patch Complete ---');
-
