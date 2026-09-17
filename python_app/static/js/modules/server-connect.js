@@ -154,6 +154,7 @@
         console.log('[AndroidUsbBridge] USB Device Detected:', deviceName);
         ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
+        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
@@ -161,6 +162,7 @@
         console.log('[AndroidUsbBridge] USB Permission Granted for:', deviceName);
         ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
+        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
@@ -171,16 +173,17 @@
     window.onUsbDeviceDetached = function () {
         console.log('[AndroidUsbBridge] USB Device Detached');
         if (window.updateDeviceList) window.updateDeviceList();
+        if (window.scanHardwareDevices) window.scanHardwareDevices();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
     window.onUsbStreamReady = function (streamUrl) {
-        console.log('[AndroidUsbBridge] USB MJPEG Stream Ready:', streamUrl);
+        console.log('[AndroidUsbBridge] USB Stream Ready:', streamUrl);
     };
 
     // Injects USB Capture Card option directly into all camera selects
     function ensureUsbOptionInSelects() {
-        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select');
+        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select, select#camera-device-select');
         selects.forEach(select => {
             let devName = 'USB Capture Card / HDMI In';
             if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
@@ -190,7 +193,7 @@
                 } catch (_) { }
             }
 
-            const exists = Array.from(select.options).some(o => o.value === 'android_usb');
+            const exists = Array.from(select.options).some(o => o.value === 'android_usb' || /usb|capture|uvc/i.test(o.text));
             if (!exists) {
                 const opt = document.createElement('option');
                 opt.value = 'android_usb';
@@ -217,14 +220,17 @@
                     }
                 } catch (_) { }
 
-                const alreadyInList = list.some(d => d.deviceId === 'android_usb');
-                if (!alreadyInList) {
-                    list.unshift({
-                        deviceId: 'android_usb',
-                        kind: 'videoinput',
-                        label: `🔌 ${devName}`,
-                        groupId: 'android_usb_group'
-                    });
+                const hasHardwareUsb = list.some(d => d.kind === 'videoinput' && /usb|capture|uvc|external|hdmi/i.test(d.label));
+                if (!hasHardwareUsb) {
+                    const alreadyInList = list.some(d => d.deviceId === 'android_usb');
+                    if (!alreadyInList) {
+                        list.unshift({
+                            deviceId: 'android_usb',
+                            kind: 'videoinput',
+                            label: `🔌 ${devName}`,
+                            groupId: 'android_usb_group'
+                        });
+                    }
                 }
                 return list;
             };
@@ -245,43 +251,35 @@
                         window.AndroidUsbBridge.requestUsbCameraPermission();
                     }
 
-                    // Create MediaStream from native MJPEG HTTP stream via Canvas
-                    const streamUrl = window.getAndroidUsbStreamUrl();
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 1920;
-                    canvas.height = 1080;
-                    const ctx = canvas.getContext('2d');
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-                    img.src = streamUrl;
-
-                    let animId = null;
-                    function drawLoop() {
-                        if (img.complete && img.naturalWidth > 0) {
-                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    // 1. First attempt to find hardware external / USB camera registered in Camera2
+                    try {
+                        const rawDevices = await origEnumerate();
+                        const usbDev = rawDevices.find(d => d.kind === 'videoinput' && d.deviceId !== 'android_usb' && /usb|capture|uvc|external|hdmi/i.test(d.label));
+                        if (usbDev && usbDev.deviceId) {
+                            const newConstraints = Object.assign({}, constraints, {
+                                video: {
+                                    deviceId: { exact: usbDev.deviceId },
+                                    width: { ideal: 1920 },
+                                    height: { ideal: 1080 }
+                                }
+                            });
+                            return await origGetUserMedia(newConstraints);
                         }
-                        animId = requestAnimationFrame(drawLoop);
-                    }
-                    drawLoop();
+                    } catch (_) { }
 
-                    const stream = canvas.captureStream(30);
-
-                    if (constraints && constraints.audio) {
-                        try {
-                            const audioStream = await origGetUserMedia({ audio: constraints.audio });
-                            audioStream.getAudioTracks().forEach(t => stream.addTrack(t));
-                        } catch (_) { }
+                    // 2. Fallback to high-quality camera stream with audio
+                    try {
+                        const fallbackConstraints = Object.assign({}, constraints, {
+                            video: {
+                                facingMode: { ideal: 'environment' },
+                                width: { ideal: 1920 },
+                                height: { ideal: 1080 }
+                            }
+                        });
+                        return await origGetUserMedia(fallbackConstraints);
+                    } catch (_) {
+                        return await origGetUserMedia(Object.assign({}, constraints, { video: true }));
                     }
-
-                    const origTrackStop = stream.getVideoTracks()[0]?.stop;
-                    if (origTrackStop) {
-                        stream.getVideoTracks()[0].stop = function () {
-                            if (animId) cancelAnimationFrame(animId);
-                            img.src = '';
-                            origTrackStop.call(this);
-                        };
-                    }
-                    return stream;
                 }
                 return origGetUserMedia(constraints);
             };
@@ -304,23 +302,25 @@
 
         if (target === 'controller' || target === '#controller') {
             const currentPath = window.location.pathname;
+            const targetHash = '#controller?room=' + roomId;
             if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
-                window.location.hash = '#controller?room=' + roomId;
+                window.location.hash = targetHash;
                 if (typeof handleRouting === 'function') {
                     handleRouting();
                 }
             } else {
-                window.location.href = 'index.html#controller?room=' + roomId;
+                window.location.href = 'index_v2.html' + targetHash;
             }
         } else if (target === 'player' || target === '#player') {
             const currentPath = window.location.pathname;
+            const targetHash = '#player?room=' + roomId;
             if (currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') || currentPath.endsWith('/') || currentPath === '') {
-                window.location.hash = '#player?room=' + roomId;
+                window.location.hash = targetHash;
                 if (typeof handleRouting === 'function') {
                     handleRouting();
                 }
             } else {
-                window.location.href = 'index.html#player?room=' + roomId;
+                window.location.href = 'index_v2.html' + targetHash;
             }
         } else {
             window.location.href = target;

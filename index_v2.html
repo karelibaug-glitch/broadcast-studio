@@ -2269,8 +2269,22 @@
             btn.className = 'quality-btn px-4 py-2 rounded-lg text-sm font-semibold border transition-all bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]';
         };
 
-        window.openPlayer = () => window.open(window.location.pathname + '#player?room=' + getStudioId() + '&quality=' + selectedQuality, '_blank');
-        window.openController = () => window.location.hash = '#controller?room=' + getStudioId();
+        window.openPlayer = function () {
+            const roomId = getStudioId();
+            const targetUrl = window.location.pathname + '#player?room=' + roomId + '&quality=' + selectedQuality;
+            if (window.AndroidUsbBridge || window.Capacitor || window.innerWidth < 1024) {
+                window.location.hash = '#player?room=' + roomId + '&quality=' + selectedQuality;
+                if (typeof handleRouting === 'function') handleRouting();
+            } else {
+                window.open(targetUrl, '_blank');
+            }
+        };
+
+        window.openController = function () {
+            const roomId = getStudioId();
+            window.location.hash = '#controller?room=' + roomId;
+            if (typeof handleRouting === 'function') handleRouting();
+        };
 
         // 3D Parallax Tilt for Master Control Deck
         (function init3DDeckParallax() {
