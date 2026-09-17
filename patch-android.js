@@ -33,12 +33,9 @@ if (fs.existsSync(manifestPath)) {
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -133,7 +130,7 @@ public class UsbCameraBridge {
                     UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                     if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                         if (device != null) {
-                            Log.d(TAG, "USB Permission GRANTED for device: " + device.getDeviceName());
+                            Log.d(TAG, "USB Permission GRANTED for: " + device.getDeviceName());
                             connectedDevice = device;
                             startCapture(device);
                             notifyWebView("onUsbPermissionGranted", device.getDeviceName());
@@ -184,9 +181,9 @@ public class UsbCameraBridge {
         }
 
         for (UsbDevice device : deviceList.values()) {
-            if (isUvcDevice(device)) {
+            if (isUvcDevice(device) || !isStandardPeripheral(device)) {
                 connectedDevice = device;
-                Log.d(TAG, "UVC Capture Card Detected: " + device.getDeviceName() + " (Vendor: " + device.getVendorId() + " Product: " + device.getProductId() + ")");
+                Log.d(TAG, "UVC Capture Card Detected: " + device.getDeviceName() + " (Vendor: " + device.getVendorId() + ")");
                 notifyWebView("onUsbDeviceDetected", device.getDeviceName());
                 if (!hasUsbPermission()) {
                     requestUsbCameraPermission();
@@ -196,6 +193,12 @@ public class UsbCameraBridge {
                 return;
             }
         }
+    }
+
+    private boolean isStandardPeripheral(UsbDevice device) {
+        if (device == null) return true;
+        int devClass = device.getDeviceClass();
+        return devClass == UsbConstants.USB_CLASS_HUB || devClass == UsbConstants.USB_CLASS_HID || devClass == UsbConstants.USB_CLASS_MASS_STORAGE;
     }
 
     private boolean isUvcDevice(UsbDevice device) {
@@ -212,8 +215,7 @@ public class UsbCameraBridge {
             }
         }
 
-        // Fallback for composite HDMI capture cards (e.g. MS2109) with audio/video endpoints
-        if (devClass != UsbConstants.USB_CLASS_HUB && devClass != UsbConstants.USB_CLASS_MASS_STORAGE && devClass != UsbConstants.USB_CLASS_HID) {
+        if (!isStandardPeripheral(device)) {
             for (int i = 0; i < count; i++) {
                 UsbInterface iface = device.getInterface(i);
                 if (iface.getInterfaceClass() == UsbConstants.USB_CLASS_AUDIO) {
@@ -239,16 +241,28 @@ public class UsbCameraBridge {
 
     @JavascriptInterface
     public void requestUsbCameraPermission() {
-        if (connectedDevice == null) {
-            checkAndDetectDevice();
+        if (usbManager == null) return;
+        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+        if (deviceList == null || deviceList.isEmpty()) {
+            Log.d(TAG, "No USB devices connected to request permission for");
+            return;
         }
-        if (connectedDevice != null && usbManager != null && !usbManager.hasPermission(connectedDevice)) {
-            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
-            Intent intent = new Intent(ACTION_USB_PERMISSION);
-            intent.setPackage(context.getPackageName());
-            PendingIntent pi = PendingIntent.getBroadcast(context, 0, intent, flags);
-            usbManager.requestPermission(connectedDevice, pi);
-            Log.d(TAG, "Requested USB hardware permission dialog for: " + connectedDevice.getDeviceName());
+
+        for (UsbDevice device : deviceList.values()) {
+            if (isUvcDevice(device) || !isStandardPeripheral(device)) {
+                connectedDevice = device;
+                if (!usbManager.hasPermission(device)) {
+                    Log.d(TAG, "Requesting OS USB Permission Dialog for: " + device.getDeviceName());
+                    int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
+                    Intent intent = new Intent(ACTION_USB_PERMISSION);
+                    intent.setPackage(context.getPackageName());
+                    PendingIntent pi = PendingIntent.getBroadcast(context, 0, intent, flags);
+                    usbManager.requestPermission(device, pi);
+                } else {
+                    startCapture(device);
+                }
+                return;
+            }
         }
     }
 
@@ -439,6 +453,8 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -488,20 +504,20 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-        // Prompt user for OS Runtime Permissions on App Launch
-        checkAndRequestPermissions();
+        // Post delayed prompt to ensure view/window attachment is complete
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkAndRequestPermissions, 600);
     }
 
     @Override
     public void onStart() {
         super.onStart();
-        checkAndRequestPermissions();
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkAndRequestPermissions, 400);
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        checkAndRequestPermissions();
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkAndRequestPermissions, 400);
         if (usbCameraBridge != null) {
             usbCameraBridge.checkAndDetectDevice();
         }
@@ -535,21 +551,16 @@ public class MainActivity extends BridgeActivity {
 
     public void checkAndRequestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            String[] requiredPermissions = new String[]{
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.MODIFY_AUDIO_SETTINGS
-            };
-
             List<String> listPermissionsNeeded = new ArrayList<>();
-            for (String p : requiredPermissions) {
-                if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                    listPermissionsNeeded.add(p);
-                }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                listPermissionsNeeded.add(Manifest.permission.CAMERA);
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                listPermissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
             }
 
             if (!listPermissionsNeeded.isEmpty()) {
-                Log.d(TAG, "Requesting missing permissions from OS: " + listPermissionsNeeded.size());
+                Log.d(TAG, "Prompting user for missing OS permissions: " + listPermissionsNeeded);
                 ActivityCompat.requestPermissions(
                     this,
                     listPermissionsNeeded.toArray(new String[0]),

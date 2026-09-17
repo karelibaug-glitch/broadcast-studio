@@ -11,7 +11,6 @@
         if (stored && stored.trim() !== '') {
             return stored.trim().replace(/\/+$/, '');
         }
-        // If not set and not in standalone APK localhost, default to origin
         if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
             return window.location.origin;
         }
@@ -94,18 +93,20 @@
     // Global USB Event Callbacks for Native Android Bridge
     window.onUsbDeviceDetected = function (deviceName) {
         console.log('[AndroidUsbBridge] USB Device Detected:', deviceName);
+        ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
     window.onUsbPermissionGranted = function (deviceName) {
         console.log('[AndroidUsbBridge] USB Permission Granted for:', deviceName);
+        ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
     window.onUsbPermissionDenied = function () {
-        console.warn('[AndroidUsbBridge] USB Permission Denied');
+        console.warn('[AndroidUsbBridge] USB Permission Denied by user');
     };
 
     window.onUsbDeviceDetached = function () {
@@ -118,6 +119,28 @@
         console.log('[AndroidUsbBridge] USB MJPEG Stream Ready:', streamUrl);
     };
 
+    // Injects USB Capture Card option directly into all camera selects
+    function ensureUsbOptionInSelects() {
+        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select');
+        selects.forEach(select => {
+            let devName = 'USB Capture Card / HDMI In';
+            if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
+                try {
+                    const n = window.AndroidUsbBridge.getDeviceName();
+                    if (n && n.trim()) devName = n.trim();
+                } catch (_) { }
+            }
+
+            const exists = Array.from(select.options).some(o => o.value === 'android_usb');
+            if (!exists) {
+                const opt = document.createElement('option');
+                opt.value = 'android_usb';
+                opt.text = `🔌 ${devName} (Native USB / UVC)`;
+                select.insertBefore(opt, select.firstChild);
+            }
+        });
+    }
+
     // 3. Seamless WebRTC MediaDevices Polyfill for Android USB Capture Card
     if (navigator.mediaDevices) {
         const origEnumerate = navigator.mediaDevices.enumerateDevices ? navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices) : null;
@@ -128,24 +151,21 @@
                     list = await origEnumerate();
                 } catch (_) { }
 
-                // If running in Android APK with USB bridge
-                if (window.AndroidUsbBridge) {
-                    let devName = 'USB Capture Card / HDMI In';
-                    try {
-                        if (typeof window.AndroidUsbBridge.getDeviceName === 'function') {
-                            devName = window.AndroidUsbBridge.getDeviceName() || devName;
-                        }
-                    } catch (_) { }
-
-                    const alreadyInList = list.some(d => d.deviceId === 'android_usb');
-                    if (!alreadyInList) {
-                        list.unshift({
-                            deviceId: 'android_usb',
-                            kind: 'videoinput',
-                            label: `🔌 ${devName} (Native UVC)`,
-                            groupId: 'android_usb_group'
-                        });
+                let devName = 'USB Video Capture Card (UVC / HDMI In)';
+                try {
+                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
+                        devName = window.AndroidUsbBridge.getDeviceName() || devName;
                     }
+                } catch (_) { }
+
+                const alreadyInList = list.some(d => d.deviceId === 'android_usb');
+                if (!alreadyInList) {
+                    list.unshift({
+                        deviceId: 'android_usb',
+                        kind: 'videoinput',
+                        label: `🔌 ${devName}`,
+                        groupId: 'android_usb_group'
+                    });
                 }
                 return list;
             };
@@ -161,6 +181,11 @@
                 }
 
                 if (reqDeviceId === 'android_usb') {
+                    // Trigger USB hardware permission dialog if not yet granted
+                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestUsbCameraPermission === 'function') {
+                        window.AndroidUsbBridge.requestUsbCameraPermission();
+                    }
+
                     // Create MediaStream from native MJPEG HTTP stream via Canvas
                     const streamUrl = window.getAndroidUsbStreamUrl();
                     const canvas = document.createElement('canvas');
@@ -250,8 +275,8 @@
                 </div>
 
                 <div class="border-t border-zinc-800 pt-3 flex items-center justify-between text-[11px] text-zinc-500">
-                    <span>USB Capture Bridge: <strong class="text-zinc-300">${window.AndroidUsbBridge ? 'Active' : 'Standby'}</strong></span>
-                    <button onclick="requestPermissionsFromModal()" class="text-blue-400 hover:underline">Request Permissions</button>
+                    <span>USB Capture Card: <strong class="text-emerald-400">Plug-and-Play Ready</strong></span>
+                    <button onclick="requestPermissionsFromModal()" class="text-blue-400 hover:underline">Re-check Permissions</button>
                 </div>
             </div>
         `;
@@ -276,6 +301,9 @@
             banner.onclick = window.openServerConnectModal;
             document.body.appendChild(banner);
         }
+
+        // Keep USB Capture Card option present in all selects
+        setInterval(ensureUsbOptionInSelects, 2000);
     }
 
     function updateServerBadgeUI() {
@@ -315,10 +343,13 @@
         if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestAppPermissions === 'function') {
             window.AndroidUsbBridge.requestAppPermissions();
         }
+        if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestUsbCameraPermission === 'function') {
+            window.AndroidUsbBridge.requestUsbCameraPermission();
+        }
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(s => {
                 s.getTracks().forEach(t => t.stop());
-                alert("Camera and Microphone permissions granted!");
+                alert("Permissions check complete!");
             }).catch(e => {
                 alert("Permission request: " + e.message);
             });
@@ -399,9 +430,11 @@
         document.addEventListener('DOMContentLoaded', () => {
             injectServerConnectUI();
             initAppPermissions();
+            ensureUsbOptionInSelects();
         });
     } else {
         injectServerConnectUI();
         initAppPermissions();
+        ensureUsbOptionInSelects();
     }
 })();

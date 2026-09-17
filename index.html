@@ -2883,9 +2883,22 @@
                         let aLabel = device.label || `Microphone ${audioCount}`;
                         const isUsbAudio = /usb|capture|line|mic|external/i.test(aLabel.toLowerCase());
                         option.text = isUsbAudio ? `🎙️ ${aLabel} (USB Audio / Digital In)` : `🎤 ${aLabel}`;
-                        micSelect.appendChild(option);
-                    }
-                });
+                    });
+
+                // Always include Native Android USB Capture Card option
+                if (!window.availableVideoDevices.some(d => d.deviceId === 'android_usb')) {
+                    videoCount++;
+                    const usbDev = {
+                        deviceId: 'android_usb',
+                        kind: 'videoinput',
+                        label: '🔌 USB Video Capture Card / HDMI In (Native UVC)'
+                    };
+                    window.availableVideoDevices.unshift(usbDev);
+                    const opt = document.createElement('option');
+                    opt.value = 'android_usb';
+                    opt.text = usbDev.label;
+                    cameraSelect.insertBefore(opt, cameraSelect.firstChild);
+                }
 
                 if (videoCount === 0) {
                     const option = document.createElement('option');
