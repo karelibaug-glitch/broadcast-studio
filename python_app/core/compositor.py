@@ -160,8 +160,14 @@ class VideoCompositor:
         self.fps = fps
         self.sources: Dict[str, MediaSource] = {}
         self._lock = threading.Lock()
-        self._current_frame: np.ndarray = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-        self._current_frame[:, :] = (15, 15, 20)
+        if np is not None:
+            try:
+                self._current_frame: Optional[np.ndarray] = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                self._current_frame[:, :] = (15, 15, 20)
+            except Exception:
+                self._current_frame = None
+        else:
+            self._current_frame = None
         self._current_jpeg: bytes = b""
         self._running = True
         self._render_thread = threading.Thread(target=self._render_loop, daemon=True)
@@ -273,6 +279,10 @@ class VideoCompositor:
         """Dedicated master rendering loop running at target FPS"""
         interval = 1.0 / self.fps
         while self._running:
+            if np is None or cv2 is None:
+                time.sleep(1.0)
+                continue
+
             t0 = time.time()
             try:
                 canvas = np.zeros((self.height, self.width, 3), dtype=np.uint8)
@@ -319,16 +329,21 @@ class VideoCompositor:
         if layer_id in self.sources:
             self.sources[layer_id].restart()
 
-    def render_frame(self) -> np.ndarray:
+    def render_frame(self) -> Optional[np.ndarray]:
         with self._lock:
-            return self._current_frame.copy()
+            return self._current_frame.copy() if self._current_frame is not None else None
 
     def get_jpeg_frame(self, quality: int = 75) -> bytes:
         with self._lock:
             if self._current_jpeg:
                 return self._current_jpeg
-            ret, jpeg = cv2.imencode('.jpg', self._current_frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            return jpeg.tobytes() if ret else b""
+            if self._current_frame is not None and cv2 is not None:
+                try:
+                    ret, jpeg = cv2.imencode('.jpg', self._current_frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                    return jpeg.tobytes() if ret else b""
+                except Exception:
+                    return b""
+            return b""
 
     def cleanup(self):
         self._running = False

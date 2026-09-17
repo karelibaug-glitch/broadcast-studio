@@ -48,6 +48,8 @@ class HardwareDeviceStreamer:
         return cv2.CAP_ANY
 
     def start(self) -> bool:
+        if cv2 is None or np is None:
+            return False
         with self.frame_lock:
             if self.running:
                 self.active_viewers += 1
