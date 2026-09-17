@@ -592,12 +592,11 @@ class RTMPStreamManager:
                 "-flags", "+global_header",
                 "-f", "matroska",
                 "-i", "pipe:0",
-                # Force EXACT 1920x1080 output at all times:
-                # scale forces target WxH, pad fills any remaining black border, setsar locks SAR, setdar locks DAR.
-                # This PREVENTS YouTube resolution-change events even if input VP8 stream reports variable dimensions.
+                # Force EXACT target output at all times:
+                # Direct bicubic scaling with setsar=1 and setdar=16/9 prevents startup letterboxing/pillarboxing
+                # and guarantees full-bleed 1920x1080 output to YouTube and all RTMP destinations.
                 "-vf", (
-                    f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                    f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+                    f"scale={width}:{height}:flags=bicubic,"
                     f"setsar=1,setdar=16/9,format=yuv420p"
                 ),
                 # Strict Constant Framerate (CFR): duplicates/drops frames to hold exactly {fps} fps.
