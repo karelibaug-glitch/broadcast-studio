@@ -180,7 +180,7 @@
 
     // Injects USB Capture Card option directly into all camera selects
     function ensureUsbOptionInSelects() {
-        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select');
+        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select, select#camera-device-select');
         selects.forEach(select => {
             let devName = 'USB Capture Card / HDMI In';
             if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {

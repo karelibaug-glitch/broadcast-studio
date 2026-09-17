@@ -9006,20 +9006,37 @@
                 right: document.getElementById('v2-dock-right')
             };
 
+            const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            // On mobile, use a longer hide delay so users have time to tap controls
+            const HIDE_DELAY = isMobile ? 5000 : 3500;
             let hideTimer = null;
-            const HIDE_DELAY = 3500; // 3.5 seconds of inactivity
             let isHovered = false;
+            let docksVisible = true;
+
+            // Inject a tap-hint overlay for mobile
+            let tapHint = null;
+            if (isMobile) {
+                tapHint = document.createElement('div');
+                tapHint.id = 'dock-tap-hint';
+                tapHint.style.cssText = 'position:fixed;bottom:50%;left:50%;transform:translate(-50%,50%);z-index:9999;background:rgba(0,0,0,0.55);color:#a1a1aa;font-size:11px;font-family:sans-serif;padding:6px 14px;border-radius:99px;border:1px solid rgba(255,255,255,0.08);pointer-events:none;opacity:0;transition:opacity 0.4s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);white-space:nowrap;';
+                tapHint.textContent = 'Tap screen to show controls';
+                document.body.appendChild(tapHint);
+            }
 
             function isAnyModalOpen() {
                 const rtmpModal = document.getElementById('rtmp-modal');
                 const camModal = document.getElementById('camera-modal');
                 const addLayerModal = document.getElementById('add-layer-modal');
+                const scModal = document.getElementById('server-connect-modal');
                 return (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
                     (camModal && !camModal.classList.contains('hidden')) ||
-                    (addLayerModal && !addLayerModal.classList.contains('hidden'));
+                    (addLayerModal && !addLayerModal.classList.contains('hidden')) ||
+                    (scModal && !scModal.classList.contains('hidden'));
             }
 
             function showDocks() {
+                docksVisible = true;
+                if (tapHint) tapHint.style.opacity = '0';
                 if (docks.top) {
                     docks.top.style.opacity = '1';
                     docks.top.style.pointerEvents = 'auto';
@@ -9044,6 +9061,8 @@
 
             function hideDocks() {
                 if (isHovered || isAnyModalOpen()) return;
+                docksVisible = false;
+                if (tapHint) tapHint.style.opacity = '1';
                 if (docks.top) {
                     docks.top.style.opacity = '0';
                     docks.top.style.pointerEvents = 'none';
@@ -9084,12 +9103,40 @@
                     isHovered = false;
                     hideTimer = setTimeout(hideDocks, HIDE_DELAY);
                 });
+                // Touch on the dock itself should keep it visible
+                dock.addEventListener('touchstart', (e) => {
+                    showDocks();
+                    clearTimeout(hideTimer);
+                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                }, { passive: true });
             });
 
             // Show docks on global mouse move, touch, or key activity
             document.addEventListener('mousemove', resetHideTimer);
-            document.addEventListener('touchstart', resetHideTimer);
             document.addEventListener('keydown', resetHideTimer);
+
+            // Touch events for mobile — show docks on any touch
+            document.addEventListener('touchstart', resetHideTimer, { passive: true });
+            document.addEventListener('touchmove', resetHideTimer, { passive: true });
+
+            // Tap on the preview canvas specifically shows docks
+            const previewWrapper = document.getElementById('controller-preview-wrapper');
+            if (previewWrapper) {
+                previewWrapper.addEventListener('touchend', function(e) {
+                    showDocks();
+                    clearTimeout(hideTimer);
+                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                }, { passive: true });
+
+                previewWrapper.addEventListener('click', function(e) {
+                    if (!docksVisible) {
+                        showDocks();
+                        clearTimeout(hideTimer);
+                        hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                        e.stopPropagation();
+                    }
+                });
+            }
 
             // Initial setup
             showDocks();
