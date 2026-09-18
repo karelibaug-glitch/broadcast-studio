@@ -497,15 +497,92 @@
         }
     }
 
+
+    // ── USB Capture Card: Native Capacitor Plugin Bridge ──────────────────────
+    //
+    // When running as an Android APK, the UsbCameraPlugin fires events via the
+    // Capacitor event system. We listen here (once, globally) and store the
+    // stream URL in window.usbMjpegStreamUrl so any page can use it.
+    //
+    // No action needed from the user — this runs automatically when the card
+    // is plugged in and the Android permission dialog is accepted.
+
+    window.usbMjpegStreamUrl = null; // 'http://127.0.0.1:8088/stream' when card is live
+
+    function initNativeUsbCameraPlugin() {
+        // Only runs inside the Capacitor APK — silently does nothing in browser
+        if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.UsbCamera) return;
+
+        const UsbCamera = window.Capacitor.Plugins.UsbCamera;
+
+        UsbCamera.addListener('usbCameraAttached', (data) => {
+            console.log('[USB] Capture card attached:', data.deviceName);
+        });
+
+        UsbCamera.addListener('usbCameraReady', (data) => {
+            console.log('[USB] Stream ready at:', data.url);
+            window.usbMjpegStreamUrl = data.url || 'http://127.0.0.1:8088/stream';
+            // Refresh any camera picker that is currently visible
+            ensureUsbOptionInSelects();
+            // Fire a custom DOM event so pages can react immediately
+            document.dispatchEvent(new CustomEvent('usbCameraReady', { detail: data }));
+        });
+
+        UsbCamera.addListener('usbCameraDetached', () => {
+            console.log('[USB] Capture card removed');
+            window.usbMjpegStreamUrl = null;
+            // Remove the USB option from all selects
+            document.querySelectorAll('option[value="__usb_mjpeg__"]').forEach(o => o.remove());
+            document.dispatchEvent(new CustomEvent('usbCameraDetached'));
+        });
+
+        UsbCamera.addListener('usbCameraError', (data) => {
+            console.warn('[USB] Error:', data.message);
+        });
+
+        // Ask plugin if a card is already connected (e.g. app re-opened)
+        UsbCamera.isConnected().then(result => {
+            if (result && result.connected) {
+                window.usbMjpegStreamUrl = 'http://127.0.0.1:8088/stream';
+                ensureUsbOptionInSelects();
+            }
+        }).catch(() => {});
+    }
+
+    // Injects "🔌 USB Capture Card (HDMI In)" into every camera <select> on the page
+    // when a capture card is detected. The option value is '__usb_mjpeg__' so
+    // the camera-selection code knows to use the MJPEG stream instead of getUserMedia.
+    function ensureUsbOptionInSelects() {
+        if (!window.usbMjpegStreamUrl) return; // no card connected yet
+
+        const selects = document.querySelectorAll(
+            '#camera-select, #source-camera-select, #camera-device-select, select[id*="camera"], select[id*="cam"]'
+        );
+
+        selects.forEach(sel => {
+            if (!sel.querySelector('option[value="__usb_mjpeg__"]')) {
+                const opt = document.createElement('option');
+                opt.value = '__usb_mjpeg__';
+                opt.text  = '🔌 USB Capture Card (HDMI In)';
+                opt.style.fontWeight = 'bold';
+                // Insert at top of list so it is easy to find
+                sel.insertBefore(opt, sel.firstChild);
+            }
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             injectServerConnectUI();
             initAppPermissions();
+            initNativeUsbCameraPlugin();
             ensureUsbOptionInSelects();
         });
     } else {
         injectServerConnectUI();
         initAppPermissions();
+        initNativeUsbCameraPlugin();
         ensureUsbOptionInSelects();
     }
 })();
+

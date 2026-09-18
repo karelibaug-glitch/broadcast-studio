@@ -497,15 +497,67 @@
         }
     }
 
+
+    // ── USB Capture Card: Native Capacitor Plugin Bridge ──────────────────────
+    window.usbMjpegStreamUrl = null;
+
+    function initNativeUsbCameraPlugin() {
+        if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.UsbCamera) return;
+        const UsbCamera = window.Capacitor.Plugins.UsbCamera;
+        UsbCamera.addListener('usbCameraAttached', (data) => {
+            console.log('[USB] Capture card attached:', data.deviceName);
+        });
+        UsbCamera.addListener('usbCameraReady', (data) => {
+            console.log('[USB] Stream ready at:', data.url);
+            window.usbMjpegStreamUrl = data.url || 'http://127.0.0.1:8088/stream';
+            ensureUsbOptionInSelects();
+            document.dispatchEvent(new CustomEvent('usbCameraReady', { detail: data }));
+        });
+        UsbCamera.addListener('usbCameraDetached', () => {
+            console.log('[USB] Capture card removed');
+            window.usbMjpegStreamUrl = null;
+            document.querySelectorAll('option[value="__usb_mjpeg__"]').forEach(o => o.remove());
+            document.dispatchEvent(new CustomEvent('usbCameraDetached'));
+        });
+        UsbCamera.addListener('usbCameraError', (data) => {
+            console.warn('[USB] Error:', data.message);
+        });
+        UsbCamera.isConnected().then(result => {
+            if (result && result.connected) {
+                window.usbMjpegStreamUrl = 'http://127.0.0.1:8088/stream';
+                ensureUsbOptionInSelects();
+            }
+        }).catch(() => {});
+    }
+
+    function ensureUsbOptionInSelects() {
+        if (!window.usbMjpegStreamUrl) return;
+        const selects = document.querySelectorAll(
+            '#camera-select, #source-camera-select, #camera-device-select, select[id*="camera"], select[id*="cam"]'
+        );
+        selects.forEach(sel => {
+            if (!sel.querySelector('option[value="__usb_mjpeg__"]')) {
+                const opt = document.createElement('option');
+                opt.value = '__usb_mjpeg__';
+                opt.text  = '🔌 USB Capture Card (HDMI In)';
+                opt.style.fontWeight = 'bold';
+                sel.insertBefore(opt, sel.firstChild);
+            }
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             injectServerConnectUI();
             initAppPermissions();
+            initNativeUsbCameraPlugin();
             ensureUsbOptionInSelects();
         });
     } else {
         injectServerConnectUI();
         initAppPermissions();
+        initNativeUsbCameraPlugin();
         ensureUsbOptionInSelects();
     }
 })();
+
