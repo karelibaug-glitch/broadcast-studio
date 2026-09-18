@@ -2904,21 +2904,6 @@
                         option.text = isUsbAudio ? `🎙️ ${aLabel} (USB Audio / Digital In)` : `🎤 ${aLabel}`;
                     });
 
-                // Always include Native Android USB Capture Card option
-                if (!window.availableVideoDevices.some(d => d.deviceId === 'android_usb')) {
-                    videoCount++;
-                    const usbDev = {
-                        deviceId: 'android_usb',
-                        kind: 'videoinput',
-                        label: '🔌 USB Video Capture Card / HDMI In (Native UVC)'
-                    };
-                    window.availableVideoDevices.unshift(usbDev);
-                    const opt = document.createElement('option');
-                    opt.value = 'android_usb';
-                    opt.text = usbDev.label;
-                    cameraSelect.insertBefore(opt, cameraSelect.firstChild);
-                }
-
                 if (videoCount === 0) {
                     const option = document.createElement('option');
                     option.text = "No cameras detected";
@@ -2932,9 +2917,11 @@
                     micSelect.appendChild(option);
                 }
 
-                // Restore previous camera selection if available
+                // Restore previous camera selection if available, or auto-select detected USB capture card
                 if (prevCamVal && Array.from(cameraSelect.options).some(o => o.value === prevCamVal)) {
                     cameraSelect.value = prevCamVal;
+                } else if (detectedUsbCam) {
+                    cameraSelect.value = detectedUsbCam;
                 }
 
                 // If user had previously manually chosen a mic, preserve it; otherwise auto-pair with active camera
@@ -3375,7 +3362,7 @@
             document.getElementById('new-media-val').value = '';
         };
 
-        window.addCameraLayer = function () {
+        window.addCameraLayer = async function () {
             // Check for secure context or localhost before attempting camera access
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 alert("Camera access requires a secure connection (HTTPS) or Localhost.");
@@ -3386,53 +3373,93 @@
             const micSelect = document.getElementById('mic-select');
             const videoDeviceId = cameraSelect ? cameraSelect.value : null;
             const audioDeviceId = micSelect ? micSelect.value : null;
+            const selectedOpt = cameraSelect && cameraSelect.selectedOptions ? cameraSelect.selectedOptions[0] : null;
+            const layerTitle = selectedOpt ? selectedOpt.text.replace(/^[^\w\s]+/, '').trim() : 'Live Camera';
 
-            const isCaptureCard = cameraSelect && cameraSelect.selectedOptions && cameraSelect.selectedOptions[0] && 
-                (cameraSelect.selectedOptions[0].text.includes('Capture') || cameraSelect.selectedOptions[0].text.includes('Cam Link') || cameraSelect.selectedOptions[0].text.includes('HDMI') || cameraSelect.selectedOptions[0].text.includes('🔌'));
+            const isCaptureCard = selectedOpt && 
+                (selectedOpt.text.includes('Capture') || selectedOpt.text.includes('Cam Link') || selectedOpt.text.includes('HDMI') || selectedOpt.text.includes('🔌'));
 
-            const constraints = {
-                video: {
+            let stream = null;
+
+            // 1. Primary attempt: Ideal 1080p, up to 60fps, with audio
+            try {
+                const primaryVideo = {
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
-                    frameRate: { ideal: 60, min: 24 }
-                },
-                audio: {
+                    frameRate: { ideal: 60 }
+                };
+                if (videoDeviceId) primaryVideo.deviceId = { exact: videoDeviceId };
+
+                const primaryAudio = {
                     echoCancellation: !isCaptureCard,
                     noiseSuppression: !isCaptureCard,
                     autoGainControl: !isCaptureCard
+                };
+                if (audioDeviceId) primaryAudio.deviceId = { exact: audioDeviceId };
+
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: primaryVideo,
+                    audio: primaryAudio
+                });
+            } catch (err1) {
+                console.warn("[Camera] Primary constraints failed, trying relaxed constraints:", err1);
+            }
+
+            // 2. Secondary attempt: Relaxed video + audio
+            if (!stream) {
+                try {
+                    const relaxedVideo = videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true;
+                    const relaxedAudio = audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true;
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: relaxedVideo,
+                        audio: relaxedAudio
+                    });
+                } catch (err2) {
+                    console.warn("[Camera] Relaxed video+audio failed, trying video only:", err2);
                 }
+            }
+
+            // 3. Tertiary attempt: Video ONLY (in case USB card has no audio or mic is in use)
+            if (!stream) {
+                try {
+                    const videoOnly = videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true;
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoOnly,
+                        audio: false
+                    });
+                } catch (err3) {
+                    console.warn("[Camera] Video-only with deviceId failed, trying any camera:", err3);
+                }
+            }
+
+            // 4. Final attempt: any video
+            if (!stream) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                } catch (err4) {
+                    console.error("[Camera] All camera attempts failed:", err4);
+                    alert("Camera access failed: " + (err4.message || err4.name || "Device unavailable"));
+                    return;
+                }
+            }
+
+            const layer = {
+                id: 'layer_' + Date.now(), type: 'camera', title: layerTitle, x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(),
+                audio: { volume: 1, muted: false }
             };
 
-            if (videoDeviceId) {
-                constraints.video.deviceId = { exact: videoDeviceId };
-            }
-            if (audioDeviceId) {
-                constraints.audio.deviceId = { exact: audioDeviceId };
-            }
+            // Force motion hint for smooth framerate
+            stream.getVideoTracks().forEach(t => t.contentHint = 'motion');
 
-            // High-framerate 60fps Capture for USB Capture Cards & Webcams
-            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-                const layer = {
-                    id: 'layer_' + Date.now(), type: 'camera', x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(),
-                    audio: { volume: 1, muted: false }
-                };
+            window.layers[layer.id] = layer;
+            window.localStreams[layer.id] = stream;
 
-                // Force Zoom-style FPS prioritization for webcam
-                stream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+            renderControllerLayer(layer.id);
+            renderLayerStack();
+            broadcastData({ type: 'ADD_LAYER', layer: layer });
 
-                window.layers[layer.id] = layer;
-                window.localStreams[layer.id] = stream;
-
-                renderControllerLayer(layer.id);
-                renderLayerStack();
-                broadcastData({ type: 'ADD_LAYER', layer: layer });
-
-                // Establish Media Calls safely without duplicate connection glare
-                broadcastMediaStreamToPeers(stream, layer.id);
-            }).catch(err => {
-                console.error(err);
-                alert("Camera access denied or unavailable.");
-            });
+            // Establish Media Calls safely without duplicate connection glare
+            broadcastMediaStreamToPeers(stream, layer.id);
         };
 
         window.addScreenShareLayer = function () {
@@ -8605,21 +8632,6 @@
             const info = document.getElementById('hardware-device-info');
             if (!select) return;
             select.innerHTML = '<option value="">Scanning hardware devices...</option>';
-            
-            // Check for Native Android USB OTG Capture Card first
-            let androidUsbDevice = null;
-            if (window.AndroidUsbBridge) {
-                try {
-                    if (window.AndroidUsbBridge.isUsbCameraConnected()) {
-                        androidUsbDevice = {
-                            id: 'android_usb',
-                            name: `🔌 Android USB Capture Card (${window.AndroidUsbBridge.getDeviceName()})`,
-                            backend: 'Android USB Host UVC',
-                            max_resolution: '1080p'
-                        };
-                    }
-                } catch (_) {}
-            }
 
             try {
                 const res = await fetch('/api/hardware/devices');
@@ -8627,10 +8639,6 @@
                 if (res.ok) {
                     const data = await res.json();
                     devices = data.devices || [];
-                }
-
-                if (androidUsbDevice) {
-                    devices.unshift(androidUsbDevice);
                 }
 
                 select.innerHTML = '';
@@ -8655,18 +8663,8 @@
                 window.previewHardwareDevice(select.value);
             } catch (err) {
                 console.warn("Failed to load hardware devices:", err);
-                select.innerHTML = '';
-                if (androidUsbDevice) {
-                    const opt = document.createElement('option');
-                    opt.value = androidUsbDevice.id;
-                    opt.textContent = `${androidUsbDevice.name} (${androidUsbDevice.backend})`;
-                    select.appendChild(opt);
-                    if (info) info.innerText = 'Native Android USB UVC Capture Card Active.';
-                    window.previewHardwareDevice('android_usb');
-                } else {
-                    select.innerHTML = '<option value="">Host hardware service offline</option>';
-                    if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
-                }
+                select.innerHTML = '<option value="">Host hardware service offline</option>';
+                if (info) info.innerText = 'Host hardware service unavailable. Make sure backend is running.';
             }
         };
 
@@ -8674,11 +8672,7 @@
             const previewHw = document.getElementById('camera-modal-hardware-preview');
             const placeholder = document.getElementById('camera-modal-preview-placeholder');
             if (!previewHw || (deviceId === '' || deviceId === null || deviceId === undefined)) return;
-            if (deviceId === 'android_usb' && window.AndroidUsbBridge) {
-                previewHw.src = window.AndroidUsbBridge.getStreamUrl();
-            } else {
-                previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
-            }
+            previewHw.src = `/api/hardware/stream/${deviceId}?t=${Date.now()}`;
             previewHw.classList.remove('hidden');
             if (placeholder) placeholder.classList.add('hidden');
         };
@@ -8703,7 +8697,7 @@
                 return;
             }
 
-            // 1. Live Video Preview
+            // 1. Live Video Preview with fallback
             try {
                 const vConstraints = videoDeviceId
                     ? { deviceId: { exact: videoDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -8719,8 +8713,28 @@
                     if (placeholder) placeholder.classList.add('hidden');
                 }
             } catch (err) {
-                console.warn("[CameraModal] Video preview warning:", err);
-                if (placeholder) placeholder.classList.remove('hidden');
+                console.warn("[CameraModal] Video preview with ideal resolution failed, trying basic deviceId:", err);
+                try {
+                    _camModalPreviewStream = await navigator.mediaDevices.getUserMedia({
+                        video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
+                        audio: false
+                    });
+                    if (previewVideo) {
+                        previewVideo.srcObject = _camModalPreviewStream;
+                        if (placeholder) placeholder.classList.add('hidden');
+                    }
+                } catch (err2) {
+                    console.warn("[CameraModal] Specific device preview failed, falling back to any camera:", err2);
+                    try {
+                        _camModalPreviewStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                        if (previewVideo) {
+                            previewVideo.srcObject = _camModalPreviewStream;
+                            if (placeholder) placeholder.classList.add('hidden');
+                        }
+                    } catch (err3) {
+                        if (placeholder) placeholder.classList.remove('hidden');
+                    }
+                }
             }
 
             // 2. Microphone Audio Level Meter
@@ -8798,9 +8812,8 @@
                 if (previewHw) previewHw.src = "";
                 if (modal) modal.classList.add('hidden');
 
-                const isAndroidUsb = deviceId === 'android_usb' && window.AndroidUsbBridge;
-                const streamSrc = isAndroidUsb ? window.AndroidUsbBridge.getStreamUrl() : `/api/hardware/stream/${deviceId}`;
-                const layerTitle = isAndroidUsb ? `🔌 USB Card (${window.AndroidUsbBridge.getDeviceName()})` : (selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`);
+                const streamSrc = `/api/hardware/stream/${deviceId}`;
+                const layerTitle = selectedText.split('(')[0].trim() || `Host Camera ${deviceId}`;
 
                 const layer = {
                     id: 'layer_' + Date.now(),

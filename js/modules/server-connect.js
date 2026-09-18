@@ -152,14 +152,12 @@
     // Global USB Event Callbacks for Native Android Bridge
     window.onUsbDeviceDetected = function (deviceName) {
         console.log('[AndroidUsbBridge] USB Device Detected:', deviceName);
-        ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
 
     window.onUsbPermissionGranted = function (deviceName) {
         console.log('[AndroidUsbBridge] USB Permission Granted for:', deviceName);
-        ensureUsbOptionInSelects();
         if (window.updateDeviceList) window.updateDeviceList();
         if (window.loadHardwareDevices) window.loadHardwareDevices();
     };
@@ -177,28 +175,6 @@
     window.onUsbStreamReady = function (streamUrl) {
         console.log('[AndroidUsbBridge] USB MJPEG Stream Ready:', streamUrl);
     };
-
-    // Injects USB Capture Card option directly into all camera selects
-    function ensureUsbOptionInSelects() {
-        const selects = document.querySelectorAll('select#camera-select, select.camera-select-dropdown, select#hardware-device-select, select#camera-device-select');
-        selects.forEach(select => {
-            let devName = 'USB Capture Card / HDMI In';
-            if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
-                try {
-                    const n = window.AndroidUsbBridge.getDeviceName();
-                    if (n && n.trim()) devName = n.trim();
-                } catch (_) { }
-            }
-
-            const exists = Array.from(select.options).some(o => o.value === 'android_usb');
-            if (!exists) {
-                const opt = document.createElement('option');
-                opt.value = 'android_usb';
-                opt.text = `🔌 ${devName} (Native USB / UVC)`;
-                select.insertBefore(opt, select.firstChild);
-            }
-        });
-    }
 
     // 4. USB Capture Card Media Device Support
     // Android WebView natively enumerates USB UVC cameras via enumerateDevices().

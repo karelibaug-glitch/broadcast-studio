@@ -4381,20 +4381,6 @@
                     micSelect.value = prevMic;
                 }
 
-                // Always ensure Android USB capture card is at the TOP of the camera list
-                if (!Array.from(camSelect.options).some(o => o.value === 'android_usb')) {
-                    let usbDevName = 'USB Video Capture Card (UVC / HDMI In)';
-                    try {
-                        if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
-                            usbDevName = window.AndroidUsbBridge.getDeviceName() || usbDevName;
-                        }
-                    } catch (_) { }
-                    const usbOpt = document.createElement('option');
-                    usbOpt.value = 'android_usb';
-                    usbOpt.text = `🔌 ${usbDevName} (Native USB / UVC)`;
-                    camSelect.insertBefore(usbOpt, camSelect.firstChild);
-                }
-
                 // Add synthetic options as alternatives
                 const synCamOpt1 = document.createElement('option');
                 synCamOpt1.value = 'synthetic_bars';
@@ -4423,7 +4409,7 @@
             const count = state.sources.length + 1;
             const srcId = `live_cam_${Date.now()}`;
 
-            if (camSel.startsWith('synthetic_')) {
+            if (camSel && camSel.startsWith('synthetic_')) {
                 state.sources.push({
                     id: srcId,
                     name: `Camera ${count} (${camSel === 'synthetic_bars' ? 'Color Bars' : 'Virtual Anchor'})`,
@@ -4438,88 +4424,42 @@
                 return;
             }
 
-            // === ANDROID USB CAPTURE CARD PATH ===
-            if (camSel === 'android_usb') {
-                try {
-                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestUsbCameraPermission === 'function') {
-                        window.AndroidUsbBridge.requestUsbCameraPermission();
-                    }
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: 'android_usb' } },
-                        audio: micSel && micSel !== 'synthetic_tone' ? {
-                            deviceId: { exact: micSel },
-                            echoCancellation: false,
-                            noiseSuppression: false,
-                            autoGainControl: false
-                        } : false
-                    });
-
-                    const pool = document.getElementById('video-pool-container') || document.body;
-                    const vid = document.createElement('video');
-                    vid.id = `video-${srcId}`;
-                    vid.srcObject = stream;
-                    vid.autoplay = true;
-                    vid.playsInline = true;
-                    vid.muted = true;
-                    vid.setAttribute('playsinline', '');
-                    pool.appendChild(vid);
-                    await vid.play().catch(e => console.warn('[USB Director]', e));
-
-                    window.activeVideos[srcId] = vid;
-                    window.activeStreams[srcId] = stream;
-
-                    if (stream.getAudioTracks().length > 0) {
-                        const aud = document.createElement('audio');
-                        aud.id = `audio-${srcId}`;
-                        aud.srcObject = stream;
-                        aud.autoplay = true;
-                        pool.appendChild(aud);
-                        window.guestAudioElements[srcId] = aud;
-                        updateDirectorAudioMonitoring();
-                    }
-
-                    state.sources.push({
-                        id: srcId,
-                        name: `🔌 USB Capture Card ${count}`,
-                        type: 'input',
-                        isRealMedia: true,
-                        resolution: '1280x720 USB',
-                        audioDb: -12
-                    });
-
-                    if (state.sources.length === 1 && (!state.pvwTarget || state.pvwTarget.type === 'scene')) {
-                        cueSourceToPVW(srcId);
-                    }
-
-                    document.getElementById('cameras-count').innerText = state.sources.length;
-                    renderSourcesGrid();
-                    showDirectorToast(`USB Capture Card added as Camera ${count}!`, 'success');
-                } catch (err) {
-                    showDirectorToast('USB Capture Card error: ' + err.message, 'error', 5000);
-                }
-                return;
-            }
-
             try {
-                const constraints = {
-                    video: camSel ? {
-                        deviceId: { exact: camSel },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        frameRate: { ideal: 60, min: 24 }
-                    } : {
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        frameRate: { ideal: 60, min: 24 }
-                    },
-                    audio: micSel && micSel !== 'synthetic_tone' ? {
-                        deviceId: { exact: micSel },
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    } : false
-                };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                const micConstraint = micSel && micSel !== 'synthetic_tone' ? {
+                    deviceId: { exact: micSel },
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                } : false;
+
+                // Multi-stage fallback for capture cards and cameras
+                const attempts = [
+                    // 1. Ideal exact device + 1080p60 + audio
+                    { video: camSel ? { deviceId: { exact: camSel }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } } : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }, audio: micConstraint },
+                    // 2. Relaxed exact device + audio
+                    { video: camSel ? { deviceId: { exact: camSel } } : true, audio: micConstraint },
+                    // 3. Exact device video-only (in case mic access conflicts or fails)
+                    { video: camSel ? { deviceId: { exact: camSel } } : true, audio: false },
+                    // 4. Any video device
+                    { video: true, audio: false }
+                ];
+
+                let stream = null;
+                let lastErr = null;
+                for (const c of attempts) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(c);
+                        if (stream) break;
+                    } catch (e) {
+                        lastErr = e;
+                    }
+                }
+
+                if (!stream) {
+                    showDirectorToast('Failed to start camera: ' + (lastErr ? lastErr.message : 'Unknown error'), 'error', 5000);
+                    return;
+                }
+
                 stream.getVideoTracks().forEach(t => t.contentHint = 'motion');
 
                 const pool = document.getElementById('video-pool-container') || document.body;
@@ -4529,8 +4469,9 @@
                 vid.autoplay = true;
                 vid.playsInline = true;
                 vid.muted = true;
+                vid.setAttribute('playsinline', '');
                 pool.appendChild(vid);
-                await vid.play().catch(e => console.warn(e));
+                await vid.play().catch(e => console.warn('[Director Cam Play]', e));
 
                 window.activeVideos[srcId] = vid;
                 window.activeStreams[srcId] = stream;
@@ -4546,9 +4487,13 @@
                     updateDirectorAudioMonitoring();
                 }
 
+                const selectedOpt = document.querySelector(`#camera-select option[value="${camSel}"]`);
+                const isUsb = selectedOpt && /usb|capture|cam link|uvc|hdmi|external/i.test(selectedOpt.text);
+                const sourceName = isUsb ? `🔌 USB Capture Card ${count}` : `Live Camera ${count}`;
+
                 state.sources.push({
                     id: srcId,
-                    name: `Live Camera ${count}`,
+                    name: sourceName,
                     type: 'input',
                     isRealMedia: true,
                     resolution: `${vid.videoWidth || 1920}x${vid.videoHeight || 1080}`,
