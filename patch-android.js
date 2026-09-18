@@ -386,10 +386,12 @@ public class UsbCameraBridge {
             byte[] reqBuf = new byte[1024];
             in.read(reqBuf);
 
-            String header = "HTTP/1.1 200 OK\\r\\n" +
-                    "Access-Control-Allow-Origin: *\\r\\n" +
-                    "Content-Type: multipart/x-mixed-replace; boundary=--frame\\r\\n\\r\\n";
-            out.write(header.getBytes());
+            String header = "HTTP/1.1 200 OK\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n" +
+                    "Cache-Control: no-cache\r\n" +
+                    "Connection: keep-alive\r\n\r\n";
+            out.write(header.getBytes("UTF-8"));
             out.flush();
 
             while (isStreaming.get() && !socket.isClosed()) {
@@ -402,12 +404,12 @@ public class UsbCameraBridge {
                 }
 
                 if (frame != null && frame.length > 0) {
-                    String partHeader = "--frame\\r\\n" +
-                            "Content-Type: image/jpeg\\r\\n" +
-                            "Content-Length: " + frame.length + "\\r\\n\\r\\n";
-                    out.write(partHeader.getBytes());
+                    String partHeader = "--frame\r\n" +
+                            "Content-Type: image/jpeg\r\n" +
+                            "Content-Length: " + frame.length + "\r\n\r\n";
+                    out.write(partHeader.getBytes("UTF-8"));
                     out.write(frame);
-                    out.write("\\r\\n".getBytes());
+                    out.write("\r\n".getBytes("UTF-8"));
                     out.flush();
                 }
                 Thread.sleep(33); // ~30 fps

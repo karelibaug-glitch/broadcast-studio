@@ -9015,30 +9015,22 @@
                 right: document.getElementById('v2-dock-right')
             };
 
-            const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-            // On mobile, use a longer hide delay so users have time to tap controls
-            const HIDE_DELAY = isMobile ? 5000 : 3500;
+            // On ANY touch/mobile device: NEVER auto-hide — always keep docks visible.
+            // Auto-hide is desktop-only (mouse users who need distraction-free view).
+            const isMobile = ('ontouchstart' in window) ||
+                             (navigator.maxTouchPoints > 0) ||
+                             /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+            const HIDE_DELAY = 5000;  // desktop only: 5s after last mouse move
             let hideTimer = null;
             let isHovered = false;
             let docksVisible = true;
-
-            // Reference the static show-controls button in the HTML
+            // We don't use the mobile-show-controls-btn anymore since mobile docks never hide
             const mobileShowBtn = document.getElementById('mobile-show-controls-btn');
-
-            function isAnyModalOpen() {
-                const rtmpModal = document.getElementById('rtmp-modal');
-                const camModal = document.getElementById('camera-modal');
-                const addLayerModal = document.getElementById('add-layer-modal');
-                const scModal = document.getElementById('server-connect-modal');
-                return (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
-                    (camModal && !camModal.classList.contains('hidden')) ||
-                    (addLayerModal && !addLayerModal.classList.contains('hidden')) ||
-                    (scModal && !scModal.classList.contains('hidden'));
-            }
+            if (mobileShowBtn) mobileShowBtn.style.display = 'none'; // always hidden, not needed
 
             function showDocks() {
                 docksVisible = true;
-                if (mobileShowBtn) mobileShowBtn.style.display = 'none';
                 if (docks.top) {
                     docks.top.style.opacity = '1';
                     docks.top.style.pointerEvents = 'auto';
@@ -9062,9 +9054,20 @@
             }
 
             function hideDocks() {
-                if (isHovered || isAnyModalOpen()) return;
+                // NEVER hide on mobile/touch devices
+                if (isMobile) return;
+                if (isHovered) return;
+                const rtmpModal = document.getElementById('rtmp-modal');
+                const camModal = document.getElementById('camera-modal');
+                const addLayerModal = document.getElementById('add-layer-modal');
+                const scModal = document.getElementById('server-connect-modal');
+                const anyOpen = (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
+                    (camModal && !camModal.classList.contains('hidden')) ||
+                    (addLayerModal && !addLayerModal.classList.contains('hidden')) ||
+                    (scModal && !scModal.classList.contains('hidden'));
+                if (anyOpen) return;
+
                 docksVisible = false;
-                if (mobileShowBtn) mobileShowBtn.style.display = 'block';
                 if (docks.top) {
                     docks.top.style.opacity = '0';
                     docks.top.style.pointerEvents = 'none';
@@ -9087,64 +9090,50 @@
                 }
             }
 
-            function resetHideTimer() {
+            // Expose showStudioDocks globally — calling it always shows docks immediately
+            window.showStudioDocks = function() {
                 showDocks();
-                clearTimeout(hideTimer);
-                hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-            }
-
-            // Attach hover listeners to all docks
-            Object.values(docks).forEach(dock => {
-                if (!dock) return;
-                dock.addEventListener('mouseenter', () => {
-                    isHovered = true;
-                    clearTimeout(hideTimer);
-                    showDocks();
-                });
-                dock.addEventListener('mouseleave', () => {
-                    isHovered = false;
-                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-                });
-                // Touch on the dock itself should keep it visible
-                dock.addEventListener('touchstart', (e) => {
-                    showDocks();
+                if (!isMobile) {
                     clearTimeout(hideTimer);
                     hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-                }, { passive: true });
-            });
+                }
+            };
 
-            // Show docks on global mouse move, touch, or key activity
-            document.addEventListener('mousemove', resetHideTimer);
-            document.addEventListener('keydown', resetHideTimer);
-
-            // Touch events for mobile — show docks on any touch
-            document.addEventListener('touchstart', resetHideTimer, { passive: true });
-            document.addEventListener('touchmove', resetHideTimer, { passive: true });
-
-            // Tap on the preview canvas specifically shows docks
-            const previewWrapper = document.getElementById('controller-preview-wrapper');
-            if (previewWrapper) {
-                previewWrapper.addEventListener('touchend', function(e) {
-                    showDocks();
-                    clearTimeout(hideTimer);
-                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-                }, { passive: true });
-
-                previewWrapper.addEventListener('click', function(e) {
-                    if (!docksVisible) {
+            // Desktop only: auto-hide on mouse inactivity
+            if (!isMobile) {
+                // Only attach mouse-based listeners on desktop
+                Object.values(docks).forEach(dock => {
+                    if (!dock) return;
+                    dock.addEventListener('mouseenter', () => {
+                        isHovered = true;
+                        clearTimeout(hideTimer);
                         showDocks();
+                    });
+                    dock.addEventListener('mouseleave', () => {
+                        isHovered = false;
                         clearTimeout(hideTimer);
                         hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-                        e.stopPropagation();
-                    }
+                    });
+                });
+
+                let mouseMoved = false;
+                document.addEventListener('mousemove', () => {
+                    showDocks();
+                    clearTimeout(hideTimer);
+                    // Only start the auto-hide timer after first real mouse move
+                    mouseMoved = true;
+                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                });
+                document.addEventListener('keydown', () => {
+                    showDocks();
+                    clearTimeout(hideTimer);
+                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
                 });
             }
 
-            // Initial setup
+            // Always show docks immediately (works for both mobile and desktop)
             showDocks();
-            hideTimer = setTimeout(hideDocks, HIDE_DELAY);
 
-            window.showStudioDocks = resetHideTimer;
         })();
 
         // ======== INTERACTIVE STUDIO TOOLTIP ENGINE (Touch & Mouse Rollover) ========
