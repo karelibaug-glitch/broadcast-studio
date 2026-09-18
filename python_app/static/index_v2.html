@@ -981,7 +981,8 @@
 
         <!-- 1. TOP DOCK: Broadcast & Telemetry Bar -->
         <div id="v2-dock-top"
-            class="studio-dock fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-3 py-1.5 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-3 py-1.5 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300 max-w-[calc(100vw-16px)] overflow-x-auto"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Multi-RTMP Broadcast -->
             <button id="rtmp-header-btn" onclick="openRTMPModal()" data-tooltip="📡 Multi-RTMP Broadcast Desk"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/30 hover:bg-red-600/60 border border-red-500/40 text-red-300 transition-all hover:scale-105 active:scale-95 text-xs font-bold relative">
@@ -1052,7 +1053,8 @@
 
         <!-- 2. LEFT DOCK: Sources & Ingestion Toolbar -->
         <div id="v2-dock-left"
-            class="studio-dock fixed left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Browse File -->
             <button onclick="document.getElementById('file-input').click()"
                 data-tooltip="📂 Browse & Ingest Media (Video/Audio/Image)"
@@ -1083,18 +1085,37 @@
                 </svg>
             </button>
 
-            <!-- Text Overlay -->
-            <button onclick="addTextLayer()" data-tooltip="🔤 Add Real-time Text Overlay"
-                class="w-10 h-10 rounded-xl bg-sky-600/30 hover:bg-sky-600/60 border border-sky-500/40 flex items-center justify-center text-sky-300 transition-all hover:scale-110 active:scale-95">
+            <!-- Text / Lower Third -->
+            <button onclick="openTextModal()" data-tooltip="✍️ Add Animated Lower Third & Text Banner"
+                class="w-10 h-10 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 flex items-center justify-center text-purple-300 transition-all hover:scale-110 active:scale-95">
+                <span class="text-sm font-black font-serif">T</span>
+            </button>
+
+            <!-- Add Layer Hub -->
+            <button onclick="openAddLayerModal()" data-tooltip="➕ Ingest Custom Stream / WebRTC Feed"
+                class="w-10 h-10 rounded-xl bg-zinc-800/60 hover:bg-zinc-700/80 border border-zinc-700/40 flex items-center justify-center text-zinc-300 transition-all hover:scale-110 active:scale-95">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
             </button>
 
-            <!-- URL / Web Source -->
-            <button onclick="openAddLayerModal()" data-tooltip="🌐 Add Web URL / Stream Source"
-                class="w-10 h-10 rounded-xl bg-orange-600/30 hover:bg-orange-600/60 border border-orange-500/40 flex items-center justify-center text-orange-300 transition-all hover:scale-110 active:scale-95">
+            <div class="w-6 h-px bg-zinc-700/50 my-1"></div>
+
+            <!-- Server Connect -->
+            <button onclick="openServerConnectModal()" data-tooltip="🌐 Broadcast Core Relay Engine Settings"
+                class="w-10 h-10 rounded-xl bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/40 flex items-center justify-center text-blue-300 transition-all hover:scale-110 active:scale-95">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
+
+            <!-- Director Suite Link -->
+            <button onclick="window.open('director_suite.html', '_blank')"
+                data-tooltip="🎬 Open Pro Director Suite (Multi-View Switcher)"
+                class="w-10 h-10 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 flex items-center justify-center text-purple-300 transition-all hover:scale-110 active:scale-95">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -1104,7 +1125,8 @@
 
         <!-- 3. RIGHT DOCK: Studio Panels & Audio Mixer Dock -->
         <div id="v2-dock-right"
-            class="studio-dock fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Layer Stack / Timeline -->
             <button onclick="toggleFloatingPanel('layer-stack-card')" data-tooltip="📚 Layer Stack & Visual Hierarchy"
                 class="w-10 h-10 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/40 flex items-center justify-center text-amber-300 transition-all hover:scale-110 active:scale-95">
@@ -1114,29 +1136,38 @@
                 </svg>
             </button>
 
-            <!-- Master Audio Mixer -->
-            <button onclick="toggleFloatingPanel('audio-mixer-card')" data-tooltip="🎛️ Master Audio Mixer & Levels"
-                class="w-10 h-10 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 flex items-center justify-center text-purple-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
-            </button>
-
-            <!-- Layer Properties -->
-            <button onclick="toggleFloatingPanel('properties-panel')"
-                data-tooltip="⚙️ Layer Transform & Filters Properties"
-                class="w-10 h-10 rounded-xl bg-violet-600/30 hover:bg-violet-600/60 border border-violet-500/40 flex items-center justify-center text-violet-300 transition-all hover:scale-110 active:scale-95">
+            <!-- Properties Panel -->
+            <button onclick="toggleFloatingPanel('properties-card')"
+                data-tooltip="⚙️ Fine-Tune Layer Transform & FX"
+                class="w-10 h-10 rounded-xl bg-zinc-800/60 hover:bg-zinc-700/80 border border-zinc-700/40 flex items-center justify-center text-zinc-300 transition-all hover:scale-110 active:scale-95">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
             </button>
 
-            <div class="w-6 h-px bg-zinc-700/50 my-0.5"></div>
+            <!-- Audio Console -->
+            <button onclick="toggleFloatingPanel('audio-console-card')"
+                data-tooltip="🎚️ Master Audio Mixer & Dynamics"
+                class="w-10 h-10 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 flex items-center justify-center text-emerald-300 transition-all hover:scale-110 active:scale-95">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+            </button>
 
-            <!-- Studio Monitor Audio Mute Toggle (Mute local speakers only) -->
-            <button id="toolbar-monitor-mute-btn" onclick="toggleMonitorMute()"
+            <!-- Scene Switcher Presets -->
+            <button onclick="toggleFloatingPanel('scene-presets-card')"
+                data-tooltip="🎛️ Scene Switching Presets & Transitions"
+                class="w-10 h-10 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 border border-indigo-500/40 flex items-center justify-center text-indigo-300 transition-all hover:scale-110 active:scale-95">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+            </button>
+
+            <!-- Studio Monitor Mute -->
+            <button id="toolbar-monitor-btn" onclick="toggleStudioMonitoring()"
                 data-tooltip="🔇 Studio Monitor Mute (Click to Listen)"
                 class="w-10 h-10 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 border border-amber-500/50 flex items-center justify-center text-amber-300 transition-all hover:scale-110 active:scale-95 shadow-[0_0_12px_rgba(245,158,11,0.25)]">
                 <span id="toolbar-monitor-icon" class="text-base">🔇</span>
@@ -1145,7 +1176,8 @@
 
         <!-- 4. BOTTOM DOCK: Media Transport & Scrubber Strip -->
         <div id="v2-dock-bottom"
-            class="studio-dock fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300 max-w-[calc(100vw-16px)] overflow-x-auto"
+            style="opacity: 1; pointer-events: auto;">
             <div id="vc-inline-strip" class="flex items-center gap-2">
                 <button onclick="window.vcRestart()" data-tooltip="⏮ Restart Media to Beginning"
                     class="w-8 h-8 rounded-lg bg-zinc-800/60 hover:bg-zinc-700 border border-zinc-700/40 flex items-center justify-center text-zinc-300 text-xs transition-all active:scale-90">⏮</button>
@@ -2256,6 +2288,7 @@
                     if (controller) controller.style.display = 'flex';
                     const displayRoomEl = document.getElementById('display-room-id');
                     if (displayRoomEl) displayRoomEl.innerText = currentRoomId;
+                    if (window.showStudioDocks) window.showStudioDocks();
                     initController();
                 } else {
                     if (landing) landing.style.display = 'flex';
@@ -2728,6 +2761,7 @@
         // CONTROLLER ENGINE
         // ==========================================
         function initController() {
+            if (window.showStudioDocks) window.showStudioDocks();
             setupPreviewScaling();
             setupInteractiveCanvas();
             setupPropertiesPanelListeners();

@@ -31,6 +31,13 @@ copyList.forEach(file => {
     }
 });
 
+// Explicitly ensure www/index.html is Production Controller v2 (matching FastAPI / and Vercel routing)
+const v2Src = path.join(__dirname, 'index_v2.html');
+if (fs.existsSync(v2Src)) {
+    fs.copyFileSync(v2Src, path.join(targetDir, 'index.html'));
+    console.log(`Copied index_v2.html -> www/index.html (Capacitor Android root)`);
+}
+
 function copyDirRecursive(src, dest) {
     if (!fs.existsSync(src)) return;
     if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });

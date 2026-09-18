@@ -909,7 +909,8 @@
 
         <!-- 1. TOP DOCK: Broadcast & Telemetry Bar -->
         <div id="v2-dock-top"
-            class="studio-dock fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-3 py-1.5 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-3 py-1.5 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300 max-w-[calc(100vw-16px)] overflow-x-auto"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Multi-RTMP Broadcast -->
             <button id="rtmp-header-btn" onclick="openRTMPModal()" data-tooltip="📡 Multi-RTMP Broadcast Desk"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/30 hover:bg-red-600/60 border border-red-500/40 text-red-300 transition-all hover:scale-105 active:scale-95 text-xs font-bold relative">
@@ -969,7 +970,8 @@
 
         <!-- 2. LEFT DOCK: Sources & Ingestion Toolbar -->
         <div id="v2-dock-left"
-            class="studio-dock fixed left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Browse File -->
             <button onclick="document.getElementById('file-input').click()" data-tooltip="📂 Browse & Ingest Media (Video/Audio/Image)"
                 class="w-10 h-10 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 flex items-center justify-center text-emerald-300 transition-all hover:scale-110 active:scale-95">
@@ -986,7 +988,7 @@
             <!-- Screen Share -->
             <button onclick="addScreenShareLayer()" data-tooltip="🖥️ Share Screen or App Window"
                 class="w-10 h-10 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 border border-indigo-500/40 flex items-center justify-center text-indigo-300 transition-all hover:scale-110 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2zM12 7v5m0 0l-2-2m2 2l2-2"/></svg>
             </button>
 
             <!-- Text Overlay -->
@@ -1004,7 +1006,8 @@
 
         <!-- 3. RIGHT DOCK: Studio Panels & Audio Mixer Dock -->
         <div id="v2-dock-right"
-            class="studio-dock fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300"
+            style="opacity: 1; pointer-events: auto;">
             <!-- Layer Stack / Timeline -->
             <button onclick="toggleFloatingPanel('layer-stack-card')" data-tooltip="📚 Layer Stack & Visual Hierarchy"
                 class="w-10 h-10 rounded-xl bg-amber-600/30 hover:bg-amber-600/60 border border-amber-500/40 flex items-center justify-center text-amber-300 transition-all hover:scale-110 active:scale-95">
@@ -1034,7 +1037,8 @@
 
         <!-- 4. BOTTOM DOCK: Media Transport & Scrubber Strip -->
         <div id="v2-dock-bottom"
-            class="studio-dock fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300">
+            class="studio-dock fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-zinc-700/50 shadow-2xl transition-all duration-300 max-w-[calc(100vw-16px)] overflow-x-auto"
+            style="opacity: 1; pointer-events: auto;">
             <div id="vc-inline-strip" class="flex items-center gap-2">
                 <button onclick="window.vcRestart()" data-tooltip="⏮ Restart Media to Beginning"
                     class="w-8 h-8 rounded-lg bg-zinc-800/60 hover:bg-zinc-700 border border-zinc-700/40 flex items-center justify-center text-zinc-300 text-xs transition-all active:scale-90">⏮</button>
@@ -2072,6 +2076,7 @@
                     if (controller) controller.style.display = 'flex';
                     const displayRoomEl = document.getElementById('display-room-id');
                     if (displayRoomEl) displayRoomEl.innerText = currentRoomId;
+                    if (window.showStudioDocks) window.showStudioDocks();
                     initController();
                 } else {
                     if (landing) landing.style.display = 'flex';
@@ -2544,6 +2549,7 @@
         // CONTROLLER ENGINE
         // ==========================================
         function initController() {
+            if (window.showStudioDocks) window.showStudioDocks();
             setupPreviewScaling();
             setupInteractiveCanvas();
             setupPropertiesPanelListeners();
@@ -8829,20 +8835,19 @@
                 right: document.getElementById('v2-dock-right')
             };
 
-            let hideTimer = null;
-            const HIDE_DELAY = 3500; // 3.5 seconds of inactivity
-            let isHovered = false;
+            // On ANY touch/mobile device: NEVER auto-hide - always keep docks visible.
+            // Auto-hide is desktop-only (mouse users who need distraction-free view).
+            const isMobile = ('ontouchstart' in window) ||
+                             (navigator.maxTouchPoints > 0) ||
+                             /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-            function isAnyModalOpen() {
-                const rtmpModal = document.getElementById('rtmp-modal');
-                const camModal = document.getElementById('camera-modal');
-                const addLayerModal = document.getElementById('add-layer-modal');
-                return (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
-                       (camModal && !camModal.classList.contains('hidden')) ||
-                       (addLayerModal && !addLayerModal.classList.contains('hidden'));
-            }
+            const HIDE_DELAY = 5000;  // desktop only: 5s after last mouse move
+            let hideTimer = null;
+            let isHovered = false;
+            let docksVisible = true;
 
             function showDocks() {
+                docksVisible = true;
                 if (docks.top) {
                     docks.top.style.opacity = '1';
                     docks.top.style.pointerEvents = 'auto';
@@ -8866,7 +8871,20 @@
             }
 
             function hideDocks() {
-                if (isHovered || isAnyModalOpen()) return;
+                // NEVER hide on mobile/touch devices
+                if (isMobile) return;
+                if (isHovered) return;
+                const rtmpModal = document.getElementById('rtmp-modal');
+                const camModal = document.getElementById('camera-modal');
+                const addLayerModal = document.getElementById('add-layer-modal');
+                const scModal = document.getElementById('server-connect-modal');
+                const anyOpen = (rtmpModal && !rtmpModal.classList.contains('hidden')) ||
+                    (camModal && !camModal.classList.contains('hidden')) ||
+                    (addLayerModal && !addLayerModal.classList.contains('hidden')) ||
+                    (scModal && !scModal.classList.contains('hidden'));
+                if (anyOpen) return;
+
+                docksVisible = false;
                 if (docks.top) {
                     docks.top.style.opacity = '0';
                     docks.top.style.pointerEvents = 'none';
@@ -8889,36 +8907,41 @@
                 }
             }
 
-            function resetHideTimer() {
+            // Expose showStudioDocks globally - calling it always shows docks immediately
+            window.showStudioDocks = function() {
                 showDocks();
-                clearTimeout(hideTimer);
-                hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-            }
-
-            // Attach hover listeners to all docks
-            Object.values(docks).forEach(dock => {
-                if (!dock) return;
-                dock.addEventListener('mouseenter', () => {
-                    isHovered = true;
+                if (!isMobile) {
                     clearTimeout(hideTimer);
-                    showDocks();
+                    hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                }
+            };
+
+            // Desktop only: auto-hide on mouse inactivity
+            if (!isMobile) {
+                // Only attach mouse-based listeners on desktop
+                Object.values(docks).forEach(dock => {
+                    if (!dock) return;
+                    dock.addEventListener('mouseenter', () => {
+                        isHovered = true;
+                        clearTimeout(hideTimer);
+                        showDocks();
+                    });
+                    dock.addEventListener('mouseleave', () => {
+                        isHovered = false;
+                        hideTimer = setTimeout(hideDocks, HIDE_DELAY);
+                    });
                 });
-                dock.addEventListener('mouseleave', () => {
-                    isHovered = false;
+
+                // Desktop mouse activity reveals docks and resets 5s timer
+                document.addEventListener('mousemove', () => {
+                    showDocks();
+                    clearTimeout(hideTimer);
                     hideTimer = setTimeout(hideDocks, HIDE_DELAY);
                 });
-            });
+            }
 
-            // Show docks on global mouse move, touch, or key activity
-            document.addEventListener('mousemove', resetHideTimer);
-            document.addEventListener('touchstart', resetHideTimer);
-            document.addEventListener('keydown', resetHideTimer);
-
-            // Initial setup
+            // Always show docks on start
             showDocks();
-            hideTimer = setTimeout(hideDocks, HIDE_DELAY);
-
-            window.showStudioDocks = resetHideTimer;
         })();
 
         // ======== INTERACTIVE STUDIO TOOLTIP ENGINE (Touch & Mouse Rollover) ========
