@@ -200,158 +200,26 @@
         });
     }
 
-    // 4. Seamless WebRTC MediaDevices Polyfill for Android USB Capture Card
-    if (navigator.mediaDevices) {
-        const origEnumerate = navigator.mediaDevices.enumerateDevices ? navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices) : null;
-        if (origEnumerate) {
-            navigator.mediaDevices.enumerateDevices = async function () {
-                let list = [];
+    // 4. USB Capture Card Media Device Support
+    // Android WebView natively enumerates USB UVC cameras via enumerateDevices().
+    // We do NOT inject a fake 'android_usb' device - the real deviceId from the
+    // system is already correct and getUserMedia works with it directly.
+    // We only ensure camera permission is requested when any video device is accessed.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = async function (constraints) {
+            // If requesting video, ensure camera permission is pre-requested
+            if (constraints && constraints.video) {
                 try {
-                    list = await origEnumerate();
-                } catch (_) { }
-
-                let devName = 'USB Video Capture Card (UVC / HDMI In)';
-                try {
-                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getDeviceName === 'function') {
-                        devName = window.AndroidUsbBridge.getDeviceName() || devName;
-                    }
-                } catch (_) { }
-
-                const alreadyInList = list.some(d => d.deviceId === 'android_usb');
-                if (!alreadyInList) {
-                    list.unshift({
-                        deviceId: 'android_usb',
-                        kind: 'videoinput',
-                        label: `🔌 ${devName}`,
-                        groupId: 'android_usb_group'
-                    });
-                }
-                return list;
-            };
-        }
-
-        const origGetUserMedia = navigator.mediaDevices.getUserMedia ? navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices) : null;
-        if (origGetUserMedia) {
-            navigator.mediaDevices.getUserMedia = async function (constraints) {
-                const videoConstraint = constraints && constraints.video;
-                let reqDeviceId = null;
-                if (typeof videoConstraint === 'object' && videoConstraint) {
-                    reqDeviceId = videoConstraint.deviceId?.exact || videoConstraint.deviceId || null;
-                }
-
-                if (reqDeviceId === 'android_usb') {
-                    // Trigger USB hardware permission dialog if not yet granted
+                    // On Android WebView, this triggers the permission dialog if not yet granted
                     if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestUsbCameraPermission === 'function') {
                         window.AndroidUsbBridge.requestUsbCameraPermission();
                     }
-
-                    // Try 1: Use native UVC MediaStream if the Android bridge provides one
-                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getUvcMediaStream === 'function') {
-                        try {
-                            const nativeStream = window.AndroidUsbBridge.getUvcMediaStream();
-                            if (nativeStream) {
-                                if (constraints && constraints.audio) {
-                                    try {
-                                        const audioStream = await origGetUserMedia({ audio: constraints.audio });
-                                        audioStream.getAudioTracks().forEach(t => nativeStream.addTrack(t));
-                                    } catch (_) { }
-                                }
-                                return nativeStream;
-                            }
-                        } catch (_) { }
-                    }
-
-                    // Try 2: Use native camera real deviceId if available from the bridge
-                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.getNativeDeviceId === 'function') {
-                        try {
-                            const nativeDevId = window.AndroidUsbBridge.getNativeDeviceId();
-                            if (nativeDevId && nativeDevId !== 'android_usb') {
-                                const nativeConstraints = Object.assign({}, constraints);
-                                nativeConstraints.video = Object.assign({}, typeof constraints.video === 'object' ? constraints.video : {});
-                                nativeConstraints.video.deviceId = { exact: nativeDevId };
-                                return await origGetUserMedia(nativeConstraints);
-                            }
-                        } catch (_) { }
-                    }
-
-                    // Try 3: Create MediaStream from MJPEG HTTP stream via hidden <video> element + Canvas
-                    // This is the fallback for MJPEG streams from USB capture card servers.
-                    const streamUrl = window.getAndroidUsbStreamUrl();
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 1280;
-                    canvas.height = 720;
-                    const ctx = canvas.getContext('2d');
-
-                    // Use hidden <img> — browsers auto-refresh MJPEG through <img> tags
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-
-                    // Continuously reload the MJPEG image at ~30fps to decode new frames
-                    let animId = null;
-                    let isActive = true;
-                    let lastSrc = '';
-                    let frameCount = 0;
-
-                    function drawLoop() {
-                        if (!isActive) return;
-                        // Draw current frame if image has loaded
-                        if (img.complete && img.naturalWidth > 0) {
-                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        }
-                        animId = requestAnimationFrame(drawLoop);
-                    }
-
-                    // Refresh MJPEG frame via new img.src load (for MJPEG over HTTP)
-                    function refreshMjpegFrame() {
-                        if (!isActive) return;
-                        const newImg = new Image();
-                        newImg.crossOrigin = 'anonymous';
-                        newImg.onload = function () {
-                            if (!isActive) return;
-                            ctx.drawImage(newImg, 0, 0, canvas.width, canvas.height);
-                        };
-                        // Cache bust to force a new frame fetch from MJPEG boundary
-                        newImg.src = streamUrl + (streamUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
-                    }
-
-                    // Initial image load for MJPEG (browser may handle as a stream natively)
-                    img.onload = function () {
-                        if (!isActive) return;
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    };
-                    img.src = streamUrl;
-
-                    drawLoop();
-
-                    // Also poll for new frames at ~24fps for MJPEG refresh fallback
-                    const frameTimer = setInterval(refreshMjpegFrame, 42);
-
-                    const stream = canvas.captureStream(30);
-
-                    if (constraints && constraints.audio) {
-                        try {
-                            const audioStream = await origGetUserMedia({ audio: constraints.audio });
-                            audioStream.getAudioTracks().forEach(t => stream.addTrack(t));
-                        } catch (_) { }
-                    }
-
-                    // Override stop to clean up resources
-                    const videoTrack = stream.getVideoTracks()[0];
-                    if (videoTrack) {
-                        const origStop = videoTrack.stop.bind(videoTrack);
-                        videoTrack.stop = function () {
-                            isActive = false;
-                            if (animId) cancelAnimationFrame(animId);
-                            clearInterval(frameTimer);
-                            img.src = '';
-                            origStop();
-                        };
-                    }
-                    return stream;
-                }
-                return origGetUserMedia(constraints);
-            };
-        }
+                } catch (_) { }
+            }
+            // Always pass through to native getUserMedia - it handles USB cameras natively
+            return origGetUserMedia(constraints);
+        };
     }
 
     // 5. Studio Module Navigation Helper

@@ -934,6 +934,15 @@
             </div>
         </div>
 
+        <!-- ====== MOBILE SHOW CONTROLS BUTTON (always accessible) ====== -->
+        <!-- This pill is shown/hidden by the dock auto-hide JS. Tap it to show all docks. -->
+        <button id="mobile-show-controls-btn"
+            onclick="if(window.showStudioDocks) window.showStudioDocks();"
+            style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9990;background:rgba(30,30,40,0.75);color:#a1a1aa;font-size:12px;font-family:sans-serif;padding:7px 18px;border-radius:99px;border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);white-space:nowrap;cursor:pointer;pointer-events:auto;touch-action:manipulation;"
+            aria-label="Show studio controls">
+            ☰ &nbsp;Show Controls
+        </button>
+
         <!-- ====== HUD OVERLAY (always visible, minimal) ====== -->
         <div id="hud-overlay" class="fixed top-3 left-3 z-40 flex items-center gap-2 pointer-events-none">
             <!-- Live Badge -->
@@ -9013,15 +9022,8 @@
             let isHovered = false;
             let docksVisible = true;
 
-            // Inject a tap-hint overlay for mobile
-            let tapHint = null;
-            if (isMobile) {
-                tapHint = document.createElement('div');
-                tapHint.id = 'dock-tap-hint';
-                tapHint.style.cssText = 'position:fixed;bottom:50%;left:50%;transform:translate(-50%,50%);z-index:9999;background:rgba(0,0,0,0.55);color:#a1a1aa;font-size:11px;font-family:sans-serif;padding:6px 14px;border-radius:99px;border:1px solid rgba(255,255,255,0.08);pointer-events:none;opacity:0;transition:opacity 0.4s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);white-space:nowrap;';
-                tapHint.textContent = 'Tap screen to show controls';
-                document.body.appendChild(tapHint);
-            }
+            // Reference the static show-controls button in the HTML
+            const mobileShowBtn = document.getElementById('mobile-show-controls-btn');
 
             function isAnyModalOpen() {
                 const rtmpModal = document.getElementById('rtmp-modal');
@@ -9036,7 +9038,7 @@
 
             function showDocks() {
                 docksVisible = true;
-                if (tapHint) tapHint.style.opacity = '0';
+                if (mobileShowBtn) mobileShowBtn.style.display = 'none';
                 if (docks.top) {
                     docks.top.style.opacity = '1';
                     docks.top.style.pointerEvents = 'auto';
@@ -9062,7 +9064,7 @@
             function hideDocks() {
                 if (isHovered || isAnyModalOpen()) return;
                 docksVisible = false;
-                if (tapHint) tapHint.style.opacity = '1';
+                if (mobileShowBtn) mobileShowBtn.style.display = 'block';
                 if (docks.top) {
                     docks.top.style.opacity = '0';
                     docks.top.style.pointerEvents = 'none';

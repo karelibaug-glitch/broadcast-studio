@@ -1301,65 +1301,6 @@
             const micId = document.getElementById('mic-device-select').value;
             const quality = document.getElementById('quality-select').value;
 
-            // === ANDROID USB CAPTURE CARD SPECIAL HANDLING ===
-            // For android_usb, use the polyfill-created MediaStream from getUserMedia
-            // which internally handles the MJPEG canvas bridge.
-            // Also try direct native UVC via AndroidUsbBridge first.
-            if (camId === 'android_usb') {
-                try {
-                    // Trigger permission request
-                    if (window.AndroidUsbBridge && typeof window.AndroidUsbBridge.requestUsbCameraPermission === 'function') {
-                        window.AndroidUsbBridge.requestUsbCameraPermission();
-                    }
-
-                    // Get audio stream separately first
-                    let audioStream = null;
-                    const audioConstraints = micId ? {
-                        deviceId: { exact: micId },
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    } : true;
-                    try {
-                        audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
-                    } catch (_) { }
-
-                    // Get video via polyfill (canvas MJPEG approach)
-                    const usbStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: 'android_usb' } },
-                        audio: false
-                    });
-
-                    // Merge audio tracks
-                    if (audioStream) {
-                        audioStream.getAudioTracks().forEach(t => usbStream.addTrack(t));
-                    }
-
-                    activeStream = usbStream;
-                    videoEl.srcObject = activeStream;
-                    videoEl.muted = true;
-                    videoEl.setAttribute('playsinline', '');
-                    await videoEl.play().catch(e => console.warn('[USB] video play:', e));
-
-                    startAudioVUMeter();
-
-                    setTimeout(() => {
-                        const w = videoEl.videoWidth || 1280;
-                        const h = videoEl.videoHeight || 720;
-                        const resEl = document.getElementById('telemetry-res');
-                        if (resEl) resEl.innerText = `${w}x${h} USB`;
-                    }, 1200);
-
-                    if (!updateActiveStreamOnExistingCall(activeStream)) {
-                        if (peer && peer.open && !directorCall) callDirectorHost();
-                    }
-                    return;
-                } catch (err) {
-                    console.warn('[USB] android_usb stream error:', err.message || err);
-                    // Fall through to standard getUserMedia below
-                }
-            }
-
             const resMap = {
                 '2160': { w: 3840, h: 2160 },
                 '1080': { w: 1920, h: 1080 },
