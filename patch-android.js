@@ -169,13 +169,6 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
-        new Handler(Looper.getMainLooper())
-                .postDelayed(this::checkAndRequestPermissions, 400);
-    }
-
-    @Override
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
