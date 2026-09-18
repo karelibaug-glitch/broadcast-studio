@@ -159,11 +159,15 @@
                             </select>
                         </div>
 
-                        <select id="res-select" class="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:outline-none">
+                        <select id="res-select" onchange="if(isCameraOn){ toggleCamera().then(() => toggleCamera()); }" class="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:outline-none">
                             <option value="1080p">1080p 60fps</option>
                             <option value="720p" selected>720p 60fps</option>
                             <option value="480p">480p Fast</option>
                         </select>
+
+                        <button type="button" onclick="populateDeviceLists(true)" class="text-xs text-cyan-400 hover:text-cyan-300 bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 px-2.5 py-1 rounded-lg flex items-center gap-1 transition font-medium cursor-pointer">
+                            🔄 Refresh Devices
+                        </button>
                     </div>
                 </div>
 
@@ -504,11 +508,45 @@
             }
         };
 
-        async function populateDeviceLists() {
+        let isAudioDeviceChangeAttached = false;
+
+        async function populateDeviceLists(triggerAlert = false) {
             try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    if (triggerAlert) alert('Media devices API not supported in this browser/environment.');
+                    return;
+                }
+
+                if (navigator.mediaDevices.addEventListener && !isAudioDeviceChangeAttached) {
+                    isAudioDeviceChangeAttached = true;
+                    navigator.mediaDevices.addEventListener('devicechange', async () => {
+                        console.log('[Capture Card Hot-Plug] Media devices changed, re-enumerating...');
+                        await populateDeviceLists(false);
+                    });
+                }
+
+                // Initial probe to request permissions and obtain real device labels
+                let devices = await navigator.mediaDevices.enumerateDevices();
+                const needsPrompt = devices.some(d => (d.kind === 'videoinput' || d.kind === 'audioinput') && !d.label);
+                if (needsPrompt) {
+                    try {
+                        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        tempStream.getTracks().forEach(t => t.stop());
+                        devices = await navigator.mediaDevices.enumerateDevices();
+                    } catch (permErr) {
+                        try {
+                            const tempVideo = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                            tempVideo.getTracks().forEach(t => t.stop());
+                            devices = await navigator.mediaDevices.enumerateDevices();
+                        } catch (_) {}
+                    }
+                }
+
                 const camSelect = document.getElementById('camera-select');
                 const micSelect = document.getElementById('mic-select');
+
+                let detectedUsbCam = null;
+                let detectedUsbMic = null;
 
                 if (camSelect) {
                     const prevCam = camSelect.value || selectedCameraDeviceId;
@@ -517,13 +555,17 @@
                     videoDevs.forEach((d, idx) => {
                         const opt = document.createElement('option');
                         opt.value = d.deviceId;
-                        const label = (d.label || `Camera ${idx + 1}`).toLowerCase();
-                        const isCaptureCard = label.includes('usb') || label.includes('uvc') || label.includes('capture') || label.includes('hdmi') || label.includes('cam link') || label.includes('elgato') || label.includes('video');
-                        opt.innerText = (isCaptureCard ? '🔌 ' : '📹 ') + (d.label || `Camera ${idx + 1}`) + (isCaptureCard ? ' [Capture Card]' : '');
+                        const label = (d.label || `Camera ${idx + 1}`);
+                        const isCaptureCard = /usb|capture|cam link|uvc|hdmi|external|video/i.test(label);
+                        opt.innerText = (isCaptureCard ? '🔌 ' : '📹 ') + label + (isCaptureCard ? ' [USB Capture]' : '');
+                        if (isCaptureCard && !detectedUsbCam) detectedUsbCam = d.deviceId;
                         camSelect.appendChild(opt);
                     });
                     if (prevCam && Array.from(camSelect.options).some(o => o.value === prevCam)) {
                         camSelect.value = prevCam;
+                    } else if (detectedUsbCam && !selectedCameraDeviceId) {
+                        camSelect.value = detectedUsbCam;
+                        selectedCameraDeviceId = detectedUsbCam;
                     }
                 }
 
@@ -534,25 +576,29 @@
                     audioDevs.forEach((d, idx) => {
                         const opt = document.createElement('option');
                         opt.value = d.deviceId;
-                        const isUSB = (d.label || '').toLowerCase().includes('usb');
-                        opt.innerText = (isUSB ? '🔌 ' : '🎙️ ') + (d.label || `Microphone ${idx + 1}`);
+                        const label = d.label || `Microphone ${idx + 1}`;
+                        const isUSB = /usb|capture|cam link|uvc|hdmi|line|external/i.test(label);
+                        opt.innerText = (isUSB ? '🔌 ' : '🎙️ ') + label + (isUSB ? ' [USB Audio]' : '');
+                        if (isUSB && !detectedUsbMic) detectedUsbMic = d.deviceId;
                         micSelect.appendChild(opt);
                     });
                     if (prevMic && Array.from(micSelect.options).some(o => o.value === prevMic)) {
                         micSelect.value = prevMic;
+                    } else if (detectedUsbMic && !selectedMicDeviceId) {
+                        micSelect.value = detectedUsbMic;
+                        selectedMicDeviceId = detectedUsbMic;
                     }
+                }
+
+                if (triggerAlert) {
+                    const camCount = camSelect ? camSelect.options.length - 1 : 0;
+                    const micCount = micSelect ? micSelect.options.length - 1 : 0;
+                    alert(`Devices Refreshed!\nFound ${camCount} camera(s) and ${micCount} microphone/capture input(s).`);
                 }
             } catch (err) {
                 console.warn('[Device Enumeration] Notice:', err);
+                if (triggerAlert) alert('Device refresh error: ' + err.message);
             }
-        }
-
-        // Live Hot-Plug Detection for USB Capture Cards & Mics
-        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-            navigator.mediaDevices.addEventListener('devicechange', () => {
-                console.log('[Capture Card Hot-Plug] Media devices changed, re-enumerating...');
-                populateDeviceLists();
-            });
         }
 
         function onCameraDeviceChanged() {
@@ -577,29 +623,63 @@
         async function toggleCamera() {
             const btnText = document.getElementById('cam-btn-text');
             const placeholder = document.getElementById('cam-placeholder');
+            const resSelect = document.getElementById('res-select');
+            const resVal = resSelect ? resSelect.value : '720p';
+
+            let targetWidth = 1280;
+            let targetHeight = 720;
+            if (resVal === '1080p') { targetWidth = 1920; targetHeight = 1080; }
+            else if (resVal === '480p') { targetWidth = 854; targetHeight = 480; }
 
             if (!isCameraOn) {
                 try {
-                    const videoConstraints = {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 60 }
-                    };
-                    if (selectedCameraDeviceId) {
-                        videoConstraints.deviceId = { exact: selectedCameraDeviceId };
+                    const attempts = [
+                        {
+                            video: selectedCameraDeviceId ? {
+                                deviceId: { exact: selectedCameraDeviceId },
+                                width: { ideal: targetWidth },
+                                height: { ideal: targetHeight },
+                                frameRate: { ideal: 60, min: 30 }
+                            } : {
+                                width: { ideal: targetWidth },
+                                height: { ideal: targetHeight },
+                                frameRate: { ideal: 60, min: 30 }
+                            },
+                            audio: false
+                        },
+                        {
+                            video: selectedCameraDeviceId ? { deviceId: { exact: selectedCameraDeviceId } } : true,
+                            audio: false
+                        },
+                        { video: true, audio: false }
+                    ];
+
+                    let stream = null;
+                    let lastErr = null;
+                    for (const c of attempts) {
+                        try {
+                            stream = await navigator.mediaDevices.getUserMedia(c);
+                            if (stream) break;
+                        } catch (e) {
+                            lastErr = e;
+                        }
                     }
 
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: videoConstraints,
-                        audio: false
+                    if (!stream) {
+                        throw lastErr || new Error('Unable to open camera stream');
+                    }
+
+                    stream.getVideoTracks().forEach(t => {
+                        if ('contentHint' in t) t.contentHint = 'motion';
                     });
+
                     rawVideo.srcObject = stream;
-                    rawVideo.play();
+                    await rawVideo.play().catch(e => console.warn('[AI Cam Play]', e));
                     isCameraOn = true;
                     btnText.innerText = 'Stop AI Cam';
                     placeholder.classList.add('hidden');
                     renderVideoLoop();
-                    populateDeviceLists();
+                    populateDeviceLists(false);
                 } catch (err) {
                     alert('Camera / Capture Card access error: ' + err.message);
                 }
@@ -752,10 +832,31 @@
             const btn = document.getElementById('mic-toggle-btn');
             if (!isMicOn) {
                 try {
-                    const audioConstraints = selectedMicDeviceId ? { deviceId: { exact: selectedMicDeviceId } } : true;
+                    if (!audioCtx) {
+                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    if (audioCtx.state === 'suspended') {
+                        await audioCtx.resume();
+                    }
+
+                    const micSelect = document.getElementById('mic-select');
+                    const selectedOpt = micSelect && micSelect.selectedOptions ? micSelect.selectedOptions[0] : null;
+                    const isCaptureCard = selectedOpt && /usb|capture|cam link|uvc|hdmi/i.test(selectedOpt.text);
+
+                    const audioConstraints = selectedMicDeviceId ? {
+                        deviceId: { exact: selectedMicDeviceId },
+                        echoCancellation: !isCaptureCard,
+                        noiseSuppression: !isCaptureCard,
+                        autoGainControl: !isCaptureCard
+                    } : {
+                        echoCancellation: !isCaptureCard,
+                        noiseSuppression: !isCaptureCard,
+                        autoGainControl: !isCaptureCard
+                    };
+
                     micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
                     micSourceNode = audioCtx.createMediaStreamSource(micStream);
-                    populateDeviceLists();
+                    populateDeviceLists(false);
 
                     // Delay Node
                     delayNode = audioCtx.createDelay(2.0);
@@ -789,6 +890,7 @@
                 }
                 if (audioCtx) {
                     audioCtx.close();
+                    audioCtx = null;
                 }
                 isMicOn = false;
                 btn.innerText = 'Start Mic DSP';

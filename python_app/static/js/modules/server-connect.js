@@ -343,25 +343,18 @@
         `;
         document.body.appendChild(modal);
 
-        // Top Floating Server Indicator Button (Always visible on mobile & desktop)
+        // Top Floating Server Indicator Button (Only visible on Home / Landing page)
         const badge = document.createElement('button');
         badge.id = 'server-status-badge';
         badge.onclick = window.openServerConnectModal;
-        badge.style.cssText = 'position: fixed; top: 12px; right: 12px; z-index: 999999 !important; cursor: pointer;';
+        badge.style.cssText = 'position: fixed; top: 12px; right: 12px; z-index: 999999 !important; cursor: pointer; display: none;';
         badge.className = 'px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl border backdrop-blur-md flex items-center gap-2 transition hover:scale-105 select-none';
         document.body.appendChild(badge);
         updateServerBadgeUI();
 
-        // If in APK and no server IP configured, show top banner
-        if (!localStorage.getItem(STORAGE_KEY) && (window.AndroidUsbBridge || window.location.hostname === 'localhost')) {
-            const banner = document.createElement('div');
-            banner.id = 'server-connect-banner';
-            banner.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; z-index: 999990 !important; cursor: pointer;';
-            banner.className = 'bg-amber-600 text-white text-xs py-1.5 px-4 text-center font-bold flex items-center justify-center gap-2 shadow-lg';
-            banner.innerHTML = `<span>⚠️ Mobile APK: Connect to PC Server IP (Click here)</span> <span class="bg-black/30 px-2 py-0.5 rounded text-[10px]">Configure</span>`;
-            banner.onclick = window.openServerConnectModal;
-            document.body.appendChild(banner);
-        }
+        // Listen for routing / hash changes to ensure badge is only shown on landing page
+        window.addEventListener('hashchange', updateServerBadgeUI);
+        window.addEventListener('popstate', updateServerBadgeUI);
 
         // Keep USB Capture Card option present in all selects
         setInterval(ensureUsbOptionInSelects, 2000);
@@ -370,6 +363,22 @@
     function updateServerBadgeUI() {
         const badge = document.getElementById('server-status-badge');
         if (!badge) return;
+
+        // Check if currently on the Home / Landing view where Pro Broadcast Studio displays other buttons
+        const landingEl = document.getElementById('landing-view');
+        const currentPath = window.location.pathname;
+        const isOnIndexPage = currentPath.endsWith('index.html') || currentPath.endsWith('index_v2.html') ||
+                              currentPath.endsWith('/') || currentPath === '' ||
+                              currentPath.indexOf('index') !== -1;
+        const hash = window.location.hash || '';
+        const isLandingActive = isOnIndexPage && landingEl && (hash === '' || hash === '#' || hash.startsWith('#landing')) && landingEl.style.display !== 'none';
+
+        if (!isLandingActive) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        badge.style.display = 'flex';
         const current = window.getServerUrl();
         const host = window.getServerHost();
 
@@ -377,13 +386,14 @@
             badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-emerald-500/40 bg-zinc-900/90 text-emerald-400 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';
             badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 🌐 ${host}`;
         } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-amber-500/50 bg-amber-950/80 text-amber-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer animate-bounce';
+            badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-amber-500/50 bg-amber-950/80 text-amber-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';
             badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> ⚙️ Set Server IP`;
         } else {
             badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-zinc-700 bg-zinc-900/90 text-zinc-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';
             badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-500"></span> 🌐 ${window.location.host}`;
         }
     }
+    window.updateServerBadgeUI = updateServerBadgeUI;
 
     window.openServerConnectModal = function () {
         const modal = document.getElementById('server-connect-modal');
@@ -499,29 +509,48 @@
 
 
     // ── USB Capture Card: Native Capacitor Plugin Bridge ──────────────────────
-    window.usbMjpegStreamUrl = null;
+    //
+    // When running as an Android APK, the UsbCameraPlugin fires events via the
+    // Capacitor event system. We listen here (once, globally) and store the
+    // stream URL in window.usbMjpegStreamUrl so any page can use it.
+    //
+    // No action needed from the user — this runs automatically when the card
+    // is plugged in and the Android permission dialog is accepted.
+
+    window.usbMjpegStreamUrl = null; // 'http://127.0.0.1:8088/stream' when card is live
 
     function initNativeUsbCameraPlugin() {
+        // Only runs inside the Capacitor APK — silently does nothing in browser
         if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.UsbCamera) return;
+
         const UsbCamera = window.Capacitor.Plugins.UsbCamera;
+
         UsbCamera.addListener('usbCameraAttached', (data) => {
             console.log('[USB] Capture card attached:', data.deviceName);
         });
+
         UsbCamera.addListener('usbCameraReady', (data) => {
             console.log('[USB] Stream ready at:', data.url);
             window.usbMjpegStreamUrl = data.url || 'http://127.0.0.1:8088/stream';
+            // Refresh any camera picker that is currently visible
             ensureUsbOptionInSelects();
+            // Fire a custom DOM event so pages can react immediately
             document.dispatchEvent(new CustomEvent('usbCameraReady', { detail: data }));
         });
+
         UsbCamera.addListener('usbCameraDetached', () => {
             console.log('[USB] Capture card removed');
             window.usbMjpegStreamUrl = null;
+            // Remove the USB option from all selects
             document.querySelectorAll('option[value="__usb_mjpeg__"]').forEach(o => o.remove());
             document.dispatchEvent(new CustomEvent('usbCameraDetached'));
         });
+
         UsbCamera.addListener('usbCameraError', (data) => {
             console.warn('[USB] Error:', data.message);
         });
+
+        // Ask plugin if a card is already connected (e.g. app re-opened)
         UsbCamera.isConnected().then(result => {
             if (result && result.connected) {
                 window.usbMjpegStreamUrl = 'http://127.0.0.1:8088/stream';
@@ -530,17 +559,23 @@
         }).catch(() => {});
     }
 
+    // Injects "🔌 USB Capture Card (HDMI In)" into every camera <select> on the page
+    // when a capture card is detected. The option value is '__usb_mjpeg__' so
+    // the camera-selection code knows to use the MJPEG stream instead of getUserMedia.
     function ensureUsbOptionInSelects() {
-        if (!window.usbMjpegStreamUrl) return;
+        if (!window.usbMjpegStreamUrl) return; // no card connected yet
+
         const selects = document.querySelectorAll(
             '#camera-select, #source-camera-select, #camera-device-select, select[id*="camera"], select[id*="cam"]'
         );
+
         selects.forEach(sel => {
             if (!sel.querySelector('option[value="__usb_mjpeg__"]')) {
                 const opt = document.createElement('option');
                 opt.value = '__usb_mjpeg__';
                 opt.text  = '🔌 USB Capture Card (HDMI In)';
                 opt.style.fontWeight = 'bold';
+                // Insert at top of list so it is easy to find
                 sel.insertBefore(opt, sel.firstChild);
             }
         });

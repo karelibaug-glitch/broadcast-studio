@@ -357,7 +357,12 @@
                 <!-- Talkback Mic & Capture Audio Selector -->
                 <div class="flex flex-col gap-2">
                     <div class="flex flex-col gap-1">
-                        <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Talkback Input / Capture Card:</label>
+                        <div class="flex justify-between items-center">
+                            <label class="text-[10px] font-mono text-zinc-400 font-bold uppercase">Talkback Input / Capture Card:</label>
+                            <button type="button" onclick="populateSwitcherAudioDevices(true)" class="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition font-medium cursor-pointer">
+                                🔄 Refresh Devices
+                            </button>
+                        </div>
                         <select id="switcher-audio-select" onchange="onSwitcherAudioDeviceChanged()" class="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-zinc-200 outline-none focus:border-blue-500">
                             <option value="">Default Microphone</option>
                         </select>
@@ -797,6 +802,89 @@
             });
         }
 
+        let selectedSwitcherAudioDeviceId = '';
+        let isSwitcherDeviceChangeAttached = false;
+
+        async function populateSwitcherAudioDevices(triggerAlert = false) {
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    if (triggerAlert) alert('Media devices API not supported in this browser/environment.');
+                    return;
+                }
+
+                if (navigator.mediaDevices.addEventListener && !isSwitcherDeviceChangeAttached) {
+                    isSwitcherDeviceChangeAttached = true;
+                    navigator.mediaDevices.addEventListener('devicechange', async () => {
+                        console.log('[Switcher] Audio devices changed. Rescanning...');
+                        await populateSwitcherAudioDevices(false);
+                    });
+                }
+
+                let devices = await navigator.mediaDevices.enumerateDevices();
+                const needsPrompt = devices.some(d => d.kind === 'audioinput' && !d.label);
+                if (needsPrompt) {
+                    try {
+                        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        tempStream.getTracks().forEach(t => t.stop());
+                        devices = await navigator.mediaDevices.enumerateDevices();
+                    } catch (permErr) {
+                        console.warn('[Switcher] Mic prompt warning:', permErr);
+                    }
+                }
+
+                const selectEl = document.getElementById('switcher-audio-select');
+                if (!selectEl) return;
+
+                const prevVal = selectEl.value;
+                selectEl.innerHTML = '<option value="">Default Microphone / Capture In</option>';
+
+                let micCount = 1;
+                let detectedUsb = null;
+
+                devices.forEach(device => {
+                    if (device.kind === 'audioinput') {
+                        const opt = document.createElement('option');
+                        opt.value = device.deviceId;
+                        let label = device.label || `Microphone ${micCount++}`;
+                        const isUsb = /usb|capture|cam link|uvc|hdmi|line|external/i.test(label.toLowerCase());
+                        if (isUsb) {
+                            opt.text = `🔌 ${label} (Capture Audio / USB)`;
+                            if (!detectedUsb) detectedUsb = device.deviceId;
+                        } else {
+                            opt.text = `🎙️ ${label}`;
+                        }
+                        selectEl.appendChild(opt);
+                    }
+                });
+
+                if (prevVal && [...selectEl.options].some(o => o.value === prevVal)) {
+                    selectEl.value = prevVal;
+                } else if (detectedUsb && !selectedSwitcherAudioDeviceId) {
+                    selectEl.value = detectedUsb;
+                    selectedSwitcherAudioDeviceId = detectedUsb;
+                }
+
+                if (triggerAlert) {
+                    alert(`Audio Devices Refreshed!\nFound ${selectEl.options.length - 1} input source(s).`);
+                }
+            } catch (err) {
+                console.warn('[Switcher] Audio device enumeration error:', err);
+                if (triggerAlert) alert('Failed to scan audio devices: ' + err.message);
+            }
+        }
+
+        async function onSwitcherAudioDeviceChanged() {
+            const selectEl = document.getElementById('switcher-audio-select');
+            selectedSwitcherAudioDeviceId = selectEl ? selectEl.value : '';
+            if (talkbackStream) {
+                talkbackStream.getTracks().forEach(t => t.stop());
+                talkbackStream = null;
+            }
+            if (isTalkbackActive) {
+                await startTalkbackTransmission();
+            }
+        }
+
         async function startTalkbackTransmission() {
             if (isTalkbackActive) return;
             isTalkbackActive = true;
@@ -816,7 +904,21 @@
                     await talkbackAudioCtx.resume();
                 }
                 if (!talkbackStream) {
-                    const audioConstraints = selectedSwitcherAudioDeviceId ? { deviceId: { exact: selectedSwitcherAudioDeviceId } } : true;
+                    const selectEl = document.getElementById('switcher-audio-select');
+                    const selectedOpt = selectEl && selectEl.selectedOptions ? selectEl.selectedOptions[0] : null;
+                    const isCaptureCard = selectedOpt && /usb|capture|cam link|uvc|hdmi/i.test(selectedOpt.text);
+
+                    const audioConstraints = selectedSwitcherAudioDeviceId ? {
+                        deviceId: { exact: selectedSwitcherAudioDeviceId },
+                        echoCancellation: !isCaptureCard,
+                        noiseSuppression: !isCaptureCard,
+                        autoGainControl: !isCaptureCard
+                    } : {
+                        echoCancellation: !isCaptureCard,
+                        noiseSuppression: !isCaptureCard,
+                        autoGainControl: !isCaptureCard
+                    };
+
                     talkbackStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
                     const src = talkbackAudioCtx.createMediaStreamSource(talkbackStream);
                     talkbackGainNode = talkbackAudioCtx.createGain();

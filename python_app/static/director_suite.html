@@ -1252,20 +1252,28 @@
                 </div>
 
                 <!-- Hardware Device Routing for Director Talkback & Headphone Comms -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-blue-900/40 text-xs">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[10px] font-mono text-zinc-400 uppercase font-semibold">🎙️ Talkback Microphone</label>
-                        <select id="director-talkback-mic-select" onchange="changeDirectorTalkbackMic(this.value)"
-                            class="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-zinc-200 text-xs focus:outline-none focus:border-blue-500">
-                            <option value="">Default (System Microphone)</option>
-                        </select>
+                <div class="flex flex-col gap-2 pt-2 border-t border-blue-900/40 text-xs">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] font-mono text-zinc-400 uppercase font-semibold">🎙️ Talkback / Audio Routing</span>
+                        <button type="button" onclick="enumerateHardwareDevices(true)" class="text-[10px] text-cyan-400 hover:text-cyan-300 transition">
+                            🔄 Refresh Devices
+                        </button>
                     </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[10px] font-mono text-zinc-400 uppercase font-semibold">🎧 Comms / Monitor Output</label>
-                        <select id="director-talkback-speaker-select" onchange="changeDirectorMonitoringOutput(this.value)"
-                            class="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-zinc-200 text-xs focus:outline-none focus:border-blue-500">
-                            <option value="">Default (System Speaker / Headset)</option>
-                        </select>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-mono text-zinc-400 uppercase font-semibold">🎙️ Talkback Microphone</label>
+                            <select id="director-talkback-mic-select" onchange="changeDirectorTalkbackMic(this.value)"
+                                class="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-zinc-200 text-xs focus:outline-none focus:border-blue-500 font-mono">
+                                <option value="">Default (System Microphone)</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-mono text-zinc-400 uppercase font-semibold">🎧 Comms / Monitor Output</label>
+                            <select id="director-talkback-speaker-select" onchange="changeDirectorMonitoringOutput(this.value)"
+                                class="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-zinc-200 text-xs focus:outline-none focus:border-blue-500 font-mono">
+                                <option value="">Default (System Speaker / Headset)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1281,6 +1289,100 @@
                     class="bg-zinc-950 border border-zinc-800 rounded-xl p-5 text-center text-zinc-500 text-xs font-medium">
                     No remote camera feeds connected yet. Share the link above!
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         LIVE CAMERA & USB CAPTURE CARD INGEST MODAL
+         ========================================== -->
+    <div id="live-camera-modal" class="fixed inset-0 z-50 modal-backdrop hidden flex items-center justify-center p-4">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.9)] flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <!-- Modal Header -->
+            <div class="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-600/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-lg shadow-inner">
+                        📹
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-sm sm:text-base">Live Camera & USB Capture Ingest</h3>
+                        <p class="text-[11px] text-zinc-400">Capture local webcams, HDMI video grabbers, or UVC capture cards</p>
+                    </div>
+                </div>
+                <button onclick="closeLiveCameraModal()" class="w-8 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center text-sm transition">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-5 flex flex-col gap-4 overflow-y-auto">
+                <!-- Preview Window -->
+                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center shadow-inner">
+                    <video id="director-camera-preview" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                    <div id="director-camera-preview-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-1.5 text-xs">
+                        <span class="text-3xl">📹</span>
+                        <span>Camera Feed Preview</span>
+                    </div>
+                </div>
+
+                <!-- Device Selectors with Refresh Devices Button -->
+                <div class="flex flex-col gap-3">
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs text-zinc-300 font-semibold flex items-center gap-1.5">
+                                <span class="text-emerald-400">📹</span> Camera / Video Capture Device
+                            </label>
+                            <button type="button" onclick="enumerateHardwareDevices(true)" class="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition font-medium cursor-pointer">
+                                🔄 Refresh Devices
+                            </button>
+                        </div>
+                        <select id="camera-select" onchange="startDirectorCameraPreview()"
+                            class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:border-emerald-500 outline-none font-mono">
+                            <!-- Populated dynamically via enumerateDevices -->
+                        </select>
+                    </div>
+
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs text-zinc-300 font-semibold flex items-center gap-1.5">
+                            <span class="text-emerald-400">🎙️</span> Microphone / Capture Card Audio In
+                        </label>
+                        <select id="mic-select" onchange="startDirectorCameraPreview()"
+                            class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:border-emerald-500 outline-none font-mono">
+                            <!-- Populated dynamically via enumerateDevices -->
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-zinc-800">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-mono text-zinc-400 uppercase">Stream Quality / Res</label>
+                            <select id="camera-quality-select" onchange="startDirectorCameraPreview()"
+                                class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:border-emerald-500 outline-none font-mono">
+                                <option value="1080" selected>1080p 60 FPS (FHD)</option>
+                                <option value="720">720p 60 FPS (HD)</option>
+                                <option value="2160">4K UHD (Master)</option>
+                                <option value="480">480p Fast</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-mono text-zinc-400 uppercase">Aspect Ratio</label>
+                            <select id="camera-aspect-select"
+                                class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:border-emerald-500 outline-none font-mono">
+                                <option value="16:9" selected>16:9 Landscape</option>
+                                <option value="9:16">9:16 Portrait</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-zinc-800 flex justify-end gap-2.5 bg-zinc-900/30">
+                <button onclick="closeLiveCameraModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition">
+                    Cancel
+                </button>
+                <button onclick="addLiveCameraSource(); closeLiveCameraModal();" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow flex items-center gap-1.5">
+                    <span>➕ Add to Ingest Deck</span>
+                </button>
             </div>
         </div>
     </div>
@@ -3251,7 +3353,7 @@
                         <span class="text-zinc-200 font-bold text-sm">No Local Hardware Inputs Active</span>
                         <span class="text-zinc-400 text-[11px] max-w-sm">Connect a physical webcam, capture card, screen share, or browse local media files on the Ingest Deck to the right.</span>
                         <div class="flex items-center gap-2 mt-2">
-                            <button onclick="addLiveCameraSource()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow">
+                            <button onclick="openLiveCameraModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow">
                                 + Add Live Camera / Mic
                             </button>
                             <button onclick="document.getElementById('local-file-input').click()" class="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow">
@@ -4321,21 +4423,148 @@
 
         // Hardware Device Enumeration with Real-Time USB Hot-Plug Detection
         let isDirectorDeviceChangeAttached = false;
-        async function enumerateHardwareDevices() {
+        let directorPreviewStream = null;
+
+        function openLiveCameraModal() {
+            const modal = document.getElementById('live-camera-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                enumerateHardwareDevices(false);
+                startDirectorCameraPreview();
+            }
+        }
+
+        function closeLiveCameraModal() {
+            const modal = document.getElementById('live-camera-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            stopDirectorCameraPreview();
+        }
+
+        function stopDirectorCameraPreview() {
+            if (directorPreviewStream) {
+                directorPreviewStream.getTracks().forEach(t => t.stop());
+                directorPreviewStream = null;
+            }
+            const previewEl = document.getElementById('director-camera-preview');
+            const placeholder = document.getElementById('director-camera-preview-placeholder');
+            if (previewEl) previewEl.srcObject = null;
+            if (placeholder) placeholder.classList.remove('hidden');
+        }
+
+        async function startDirectorCameraPreview() {
+            const camSelect = document.getElementById('camera-select');
+            const micSelect = document.getElementById('mic-select');
+            const qualSelect = document.getElementById('camera-quality-select');
+            const previewEl = document.getElementById('director-camera-preview');
+            const placeholder = document.getElementById('director-camera-preview-placeholder');
+
+            if (!camSelect || !previewEl) return;
+            const camId = camSelect.value;
+            const micId = micSelect ? micSelect.value : null;
+
+            if (camId && camId.startsWith('synthetic_')) {
+                stopDirectorCameraPreview();
+                if (placeholder) {
+                    placeholder.classList.remove('hidden');
+                    placeholder.innerHTML = `<span class="text-3xl">🧪</span><span class="font-bold text-emerald-400">Synthetic Pattern Selected</span><span class="text-[10px] text-zinc-400">Preview generated upon ingest</span>`;
+                }
+                return;
+            }
+
+            const targetHeight = qualSelect ? parseInt(qualSelect.value, 10) : 1080;
+            const targetWidth = Math.round(targetHeight * (16 / 9));
+
             try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+                if (directorPreviewStream) {
+                    directorPreviewStream.getTracks().forEach(t => t.stop());
+                }
+
+                const selectedCamOpt = camSelect.selectedOptions[0];
+                const isCaptureCard = selectedCamOpt && /usb|capture|cam link|uvc|hdmi|external|video/i.test(selectedCamOpt.text.toLowerCase());
+
+                const videoConstraint = camId ? {
+                    deviceId: { exact: camId },
+                    width: { ideal: targetWidth },
+                    height: { ideal: targetHeight },
+                    frameRate: { ideal: 60, min: 30 }
+                } : {
+                    width: { ideal: targetWidth },
+                    height: { ideal: targetHeight },
+                    frameRate: { ideal: 60, min: 30 }
+                };
+
+                const audioConstraint = micId && micId !== 'synthetic_tone' ? {
+                    deviceId: { exact: micId },
+                    echoCancellation: !isCaptureCard,
+                    noiseSuppression: !isCaptureCard,
+                    autoGainControl: !isCaptureCard
+                } : false;
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraint,
+                    audio: audioConstraint
+                }).catch(() => navigator.mediaDevices.getUserMedia({
+                    video: camId ? { deviceId: { exact: camId } } : true,
+                    audio: false
+                }));
+
+                if (stream) {
+                    directorPreviewStream = stream;
+                    stream.getVideoTracks().forEach(t => {
+                        if ('contentHint' in t) t.contentHint = 'motion';
+                    });
+                    previewEl.srcObject = stream;
+                    previewEl.muted = true;
+                    if (placeholder) placeholder.classList.add('hidden');
+                }
+            } catch (err) {
+                console.warn('[Director Preview] Camera preview error:', err);
+                if (placeholder) {
+                    placeholder.classList.remove('hidden');
+                    placeholder.innerHTML = `<span class="text-3xl text-amber-500">⚠️</span><span class="font-bold text-amber-400">Preview Unavailable</span><span class="text-[10px] text-zinc-500">${err.message || 'Check camera permissions'}</span>`;
+                }
+            }
+        }
+
+        async function enumerateHardwareDevices(triggerAlert = false) {
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    if (triggerAlert) showDirectorToast('Media devices API not supported in this browser/environment.', 'error');
+                    return;
+                }
 
                 if (navigator.mediaDevices.addEventListener && !isDirectorDeviceChangeAttached) {
                     isDirectorDeviceChangeAttached = true;
                     navigator.mediaDevices.addEventListener('devicechange', async () => {
                         console.log('[Director Hardware] USB or Video Device changed. Rescanning...');
-                        await enumerateHardwareDevices();
+                        await enumerateHardwareDevices(false);
                     });
                 }
 
-                const devices = await navigator.mediaDevices.enumerateDevices();
+                // Initial probe to request permissions and obtain real device labels
+                let devices = await navigator.mediaDevices.enumerateDevices();
+                const needsPrompt = devices.some(d => (d.kind === 'videoinput' || d.kind === 'audioinput') && !d.label);
+                if (needsPrompt) {
+                    try {
+                        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        tempStream.getTracks().forEach(t => t.stop());
+                        devices = await navigator.mediaDevices.enumerateDevices();
+                    } catch (permErr) {
+                        try {
+                            const tempVideo = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                            tempVideo.getTracks().forEach(t => t.stop());
+                            devices = await navigator.mediaDevices.enumerateDevices();
+                        } catch (vErr) {
+                            console.warn('[Director Hardware] Permission prompt error:', vErr);
+                        }
+                    }
+                }
+
                 const camSelect = document.getElementById('camera-select');
                 const micSelect = document.getElementById('mic-select');
+                if (!camSelect || !micSelect) return;
 
                 const prevCam = camSelect.value;
                 const prevMic = micSelect.value;
@@ -4346,6 +4575,7 @@
                 let camIndex = 1;
                 let micIndex = 1;
                 let detectedUsbCam = null;
+                let detectedUsbMic = null;
 
                 devices.forEach(device => {
                     if (device.kind === 'videoinput') {
@@ -4364,24 +4594,18 @@
                         const opt = document.createElement('option');
                         opt.value = device.deviceId;
                         let aLabel = device.label || `Microphone ${micIndex++}`;
-                        const isUsbAudio = /usb|capture|line|mic|external/i.test(aLabel.toLowerCase());
-                        opt.text = isUsbAudio ? `🎙️ ${aLabel} (USB Audio In)` : `🎤 ${aLabel}`;
+                        const isUsbAudio = /usb|capture|cam link|uvc|hdmi|line|external/i.test(aLabel.toLowerCase());
+                        if (isUsbAudio) {
+                            opt.text = `🔌 ${aLabel} (Capture Card Audio / USB)`;
+                            if (!detectedUsbMic) detectedUsbMic = device.deviceId;
+                        } else {
+                            opt.text = `🎤 ${aLabel}`;
+                        }
                         micSelect.appendChild(opt);
                     }
                 });
 
-                // Preserve previous selection or auto-select USB card if newly plugged
-                if (prevCam && [...camSelect.options].some(o => o.value === prevCam)) {
-                    camSelect.value = prevCam;
-                } else if (detectedUsbCam) {
-                    camSelect.value = detectedUsbCam;
-                }
-
-                if (prevMic && [...micSelect.options].some(o => o.value === prevMic)) {
-                    micSelect.value = prevMic;
-                }
-
-                // Add synthetic options as alternatives
+                // Synthetic video / audio generators
                 const synCamOpt1 = document.createElement('option');
                 synCamOpt1.value = 'synthetic_bars';
                 synCamOpt1.text = '🧪 Synthetic SMPTE Color Bars';
@@ -4397,15 +4621,38 @@
                 synMicOpt.text = '🧪 Synthetic 1kHz Audio Tone';
                 micSelect.appendChild(synMicOpt);
 
+                // Preserve selection or auto-select USB capture card
+                if (prevCam && [...camSelect.options].some(o => o.value === prevCam)) {
+                    camSelect.value = prevCam;
+                } else if (detectedUsbCam) {
+                    camSelect.value = detectedUsbCam;
+                }
+
+                if (prevMic && [...micSelect.options].some(o => o.value === prevMic)) {
+                    micSelect.value = prevMic;
+                } else if (detectedUsbMic) {
+                    micSelect.value = detectedUsbMic;
+                }
+
+                if (triggerAlert) {
+                    const usbCount = (detectedUsbCam ? 1 : 0) + (detectedUsbMic ? 1 : 0);
+                    const msg = usbCount > 0
+                        ? `Devices Refreshed: ${camSelect.options.length - 2} camera(s), 🔌 USB Capture Card detected!`
+                        : `Devices Refreshed: ${camSelect.options.length - 2} camera(s), ${micSelect.options.length - 1} mic(s) found.`;
+                    showDirectorToast(msg, 'success', 3500);
+                    startDirectorCameraPreview();
+                }
             } catch (err) {
                 console.warn('Device enumeration error:', err);
+                if (triggerAlert) showDirectorToast('Device refresh error: ' + err.message, 'error');
             }
         }
 
-        // Ingest Actions: Real Camera / Mic
+        // Ingest Actions: Real Camera / Mic / Capture Card
         async function addLiveCameraSource() {
-            const camSel = document.getElementById('camera-select').value;
-            const micSel = document.getElementById('mic-select').value;
+            const camSel = document.getElementById('camera-select') ? document.getElementById('camera-select').value : '';
+            const micSel = document.getElementById('mic-select') ? document.getElementById('mic-select').value : '';
+            const qualSel = document.getElementById('camera-quality-select') ? document.getElementById('camera-quality-select').value : '1080';
             const count = state.sources.length + 1;
             const srcId = `live_cam_${Date.now()}`;
 
@@ -4424,22 +4671,86 @@
                 return;
             }
 
+            // Native USB Capture Card path (CameraFi-style MJPEG)
+            if (camSel === '__usb_mjpeg__') {
+                const streamUrl = window.usbMjpegStreamUrl || 'http://127.0.0.1:8088/stream';
+                const pool = document.getElementById('video-pool-container') || document.body;
+                const img = document.createElement('img');
+                img.id = `usbimg-${srcId}`;
+                img.src = streamUrl;
+                img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1920px;height:1080px;';
+                img.crossOrigin = 'anonymous';
+                pool.appendChild(img);
+
+                const canvas = document.createElement('canvas');
+                canvas.id = `usbcanvas-${srcId}`;
+                canvas.width = 1920;
+                canvas.height = 1080;
+                canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+                pool.appendChild(canvas);
+
+                const ctx = canvas.getContext('2d');
+                let rafId;
+                function drawLoop() {
+                    if (img.complete && img.naturalWidth > 0) {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    }
+                    rafId = requestAnimationFrame(drawLoop);
+                }
+                drawLoop();
+
+                window.activeVideos[srcId] = canvas;
+                window.activeStreams[srcId] = null;
+                window._usbRafs = window._usbRafs || {};
+                window._usbRafs[srcId] = rafId;
+                window._usbImgs = window._usbImgs || {};
+                window._usbImgs[srcId] = img;
+
+                state.sources.push({
+                    id: srcId,
+                    name: `Camera ${count} (USB Capture Card)`,
+                    type: 'usb_mjpeg',
+                    isRealMedia: true,
+                    resolution: '1080p60',
+                    audioDb: -14
+                });
+                document.getElementById('cameras-count').innerText = state.sources.length;
+                renderSourcesGrid();
+                showDirectorToast(`🔌 USB Capture Card added as Camera ${count}`, 'success');
+                return;
+            }
+
             try {
+                const selectedOpt = document.querySelector(`#camera-select option[value="${camSel}"]`);
+                const isUsb = selectedOpt && /usb|capture|cam link|uvc|hdmi|external/i.test(selectedOpt.text);
+
+                const targetHeight = parseInt(qualSel, 10) || 1080;
+                const targetWidth = Math.round(targetHeight * (16 / 9));
+
                 const micConstraint = micSel && micSel !== 'synthetic_tone' ? {
                     deviceId: { exact: micSel },
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false
+                    echoCancellation: !isUsb,
+                    noiseSuppression: !isUsb,
+                    autoGainControl: !isUsb
                 } : false;
 
                 // Multi-stage fallback for capture cards and cameras
                 const attempts = [
-                    // 1. Ideal exact device + 1080p60 + audio
-                    { video: camSel ? { deviceId: { exact: camSel }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } } : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }, audio: micConstraint },
+                    // 1. Ideal exact device + target resolution + 60fps + audio
+                    {
+                        video: camSel ? { deviceId: { exact: camSel }, width: { ideal: targetWidth }, height: { ideal: targetHeight }, frameRate: { ideal: 60, min: 30 } } : { width: { ideal: targetWidth }, height: { ideal: targetHeight }, frameRate: { ideal: 60, min: 30 } },
+                        audio: micConstraint
+                    },
                     // 2. Relaxed exact device + audio
-                    { video: camSel ? { deviceId: { exact: camSel } } : true, audio: micConstraint },
+                    {
+                        video: camSel ? { deviceId: { exact: camSel } } : true,
+                        audio: micConstraint
+                    },
                     // 3. Exact device video-only (in case mic access conflicts or fails)
-                    { video: camSel ? { deviceId: { exact: camSel } } : true, audio: false },
+                    {
+                        video: camSel ? { deviceId: { exact: camSel } } : true,
+                        audio: false
+                    },
                     // 4. Any video device
                     { video: true, audio: false }
                 ];
@@ -4460,7 +4771,9 @@
                     return;
                 }
 
-                stream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+                stream.getVideoTracks().forEach(t => {
+                    if ('contentHint' in t) t.contentHint = 'motion';
+                });
 
                 const pool = document.getElementById('video-pool-container') || document.body;
                 const vid = document.createElement('video');
@@ -4487,8 +4800,6 @@
                     updateDirectorAudioMonitoring();
                 }
 
-                const selectedOpt = document.querySelector(`#camera-select option[value="${camSel}"]`);
-                const isUsb = selectedOpt && /usb|capture|cam link|uvc|hdmi|external/i.test(selectedOpt.text);
                 const sourceName = isUsb ? `🔌 USB Capture Card ${count}` : `Live Camera ${count}`;
 
                 state.sources.push({
@@ -4496,7 +4807,7 @@
                     name: sourceName,
                     type: 'input',
                     isRealMedia: true,
-                    resolution: `${vid.videoWidth || 1920}x${vid.videoHeight || 1080}`,
+                    resolution: `${vid.videoWidth || targetWidth}x${vid.videoHeight || targetHeight}`,
                     audioDb: -12
                 });
 
@@ -4506,7 +4817,7 @@
 
                 document.getElementById('cameras-count').innerText = state.sources.length;
                 renderSourcesGrid();
-                showDirectorToast(`Live Camera ${count} captured successfully!`, 'success');
+                showDirectorToast(`${sourceName} captured successfully!`, 'success');
             } catch (err) {
                 showDirectorToast('Could not access camera/mic: ' + err.message, 'error', 5000);
             }
