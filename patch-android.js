@@ -236,10 +236,10 @@ public class UsbMjpegServer extends NanoHTTPD {
                     frame = queue.poll(500, TimeUnit.MILLISECONDS);
                 }
                 if (frame == null) { chunk = null; return; }
-                String header = "--" + boundary + "\r\nContent-Type: image/jpeg\r\n"
-                    + "Content-Length: " + frame.length + "\r\n\r\n";
+                String header = "--" + boundary + "\\r\\nContent-Type: image/jpeg\\r\\n"
+                    + "Content-Length: " + frame.length + "\\r\\n\\r\\n";
                 byte[] hb = header.getBytes(StandardCharsets.US_ASCII);
-                byte[] tail = "\r\n".getBytes(StandardCharsets.US_ASCII);
+                byte[] tail = "\\r\\n".getBytes(StandardCharsets.US_ASCII);
                 chunk = new byte[hb.length + frame.length + tail.length];
                 System.arraycopy(hb,    0, chunk, 0,                        hb.length);
                 System.arraycopy(frame, 0, chunk, hb.length,                frame.length);
