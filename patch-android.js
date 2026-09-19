@@ -154,7 +154,7 @@ public class UsbMjpegServer extends NanoHTTPD {
         super("127.0.0.1", 8088);
     }
 
-    /** Called by UsbCameraPlugin for every clean MJPEG frame from the capture card. */
+    /** Called by UsbCameraPlugin for every clean, verified MJPEG frame from the capture card. */
     public void pushFrame(byte[] jpegData) {
         if (jpegData == null || jpegData.length < 512) return;
         latestFrame = jpegData;
@@ -168,7 +168,7 @@ public class UsbMjpegServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         if ("/stream".equals(uri)) {
-            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(2);
+            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(4);
             byte[] init = latestFrame;
             if (init != null) clientQueue.offer(init);
             activeStreams.add(clientQueue);
@@ -178,7 +178,8 @@ public class UsbMjpegServer extends NanoHTTPD {
                 "multipart/x-mixed-replace; boundary=" + BOUNDARY,
                 new MjpegInputStream(clientQueue, BOUNDARY, () -> activeStreams.remove(clientQueue))
             );
-            r.addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            r.addHeader("Connection", "close");
+            r.addHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
             r.addHeader("Pragma", "no-cache");
             r.addHeader("Access-Control-Allow-Origin", "*");
             return r;
@@ -186,7 +187,7 @@ public class UsbMjpegServer extends NanoHTTPD {
             byte[] frame = latestFrame;
             if (frame != null) {
                 Response r = newFixedLengthResponse(Response.Status.OK, "image/jpeg", new ByteArrayInputStream(frame), frame.length);
-                r.addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+                r.addHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
                 r.addHeader("Access-Control-Allow-Origin", "*");
                 return r;
             }
@@ -240,7 +241,7 @@ public class UsbMjpegServer extends NanoHTTPD {
                     frame = queue.poll(500, TimeUnit.MILLISECONDS);
                 }
                 if (frame == null) { chunk = null; return; }
-                String header = "--" + boundary + "\\r\\nContent-Type: image/jpeg\\r\\n"
+                String header = "\\r\\n--" + boundary + "\\r\\nContent-Type: image/jpeg\\r\\n"
                     + "Content-Length: " + frame.length + "\\r\\n\\r\\n";
                 byte[] hb = header.getBytes(StandardCharsets.US_ASCII);
                 byte[] tail = "\\r\\n".getBytes(StandardCharsets.US_ASCII);
@@ -289,10 +290,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * UsbCameraPlugin - Capacitor native plugin implementing USB capture card streaming.
+ * UsbCameraPlugin - Capacitor native plugin implementing stable USB capture card streaming.
  *
  * Uses Android USB Host API (android.hardware.usb) with rock-solid crash prevention
- * for Android 10, 11, 12, 13, 14, and 15+.
+ * and frame-accurate MJPEG synchronization.
  */
 @CapacitorPlugin(name = "UsbCamera")
 public class UsbCameraPlugin extends Plugin {
@@ -301,9 +302,8 @@ public class UsbCameraPlugin extends Plugin {
 
     private static final int TARGET_W   = 1920;
     private static final int TARGET_H   = 1080;
-    private static final int INTERVAL_60 = 166667; // 60fps in 100ns units
-    private static final int INTERVAL_30 = 333333; // 30fps fallback
-    private static final int MAX_FRAME_SIZE = 2 * 1024 * 1024; // 2MB max per JPEG frame to prevent OOM
+    private static final int INTERVAL_30 = 333333; // 30fps fallback (100ns units)
+    private static final int MAX_FRAME_SIZE = 3 * 1024 * 1024; // 3MB max per JPEG frame
 
     private UsbManager usbManager;
     private UsbDevice currentDevice;
@@ -395,7 +395,6 @@ public class UsbCameraPlugin extends Plugin {
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         filter.addAction(ACTION_USB_PERMISSION);
 
-        // Android 14 (API 34+) and Android 13 (API 33) require explicit export flags for external PendingIntent broadcasts
         if (Build.VERSION.SDK_INT >= 33) {
             getContext().registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
         } else {
@@ -454,7 +453,7 @@ public class UsbCameraPlugin extends Plugin {
                 workerExecutor.execute(() -> openAndStream(dev));
             } else {
                 Intent permIntent = new Intent(ACTION_USB_PERMISSION);
-                permIntent.setPackage(getContext().getPackageName()); // Required for Android 14+ mutable PendingIntents
+                permIntent.setPackage(getContext().getPackageName());
 
                 int flags = PendingIntent.FLAG_UPDATE_CURRENT;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -488,7 +487,7 @@ public class UsbCameraPlugin extends Plugin {
             UsbInterface bulkIface = null;
             UsbEndpoint bulkEp = null;
 
-            // Search for bulk streaming endpoint
+            // Search for bulk streaming endpoint (class 14, subclass 2 or any video interface)
             for (int i = 0; i < device.getInterfaceCount(); i++) {
                 UsbInterface iface = device.getInterface(i);
                 if (iface == null) continue;
@@ -504,7 +503,7 @@ public class UsbCameraPlugin extends Plugin {
                 if (bulkEp != null) break;
             }
 
-            // Fallback: If no interface matched, check any interface with IN bulk endpoint
+            // Fallback: If no interface matched class 14, check any interface with IN bulk endpoint
             if (bulkEp == null) {
                 for (int i = 0; i < device.getInterfaceCount(); i++) {
                     UsbInterface iface = device.getInterface(i);
@@ -542,7 +541,44 @@ public class UsbCameraPlugin extends Plugin {
                     connection.setInterface(bulkIface);
                 } catch (Throwable ignored) {}
 
-                negotiateFormat(connection, bulkIface.getId());
+                // Parse descriptors for VS_FORMAT_MJPEG and target frame size
+                int mjpegFormatIndex = 1;
+                int mjpegFrameIndex = 1;
+                try {
+                    byte[] rawDesc = connection.getRawDescriptors();
+                    if (rawDesc != null) {
+                        int pos = 0;
+                        int curFmt = 0;
+                        while (pos < rawDesc.length - 2) {
+                            int len = rawDesc[pos] & 0xFF;
+                            if (len <= 0 || pos + len > rawDesc.length) break;
+                            int descType = rawDesc[pos + 1] & 0xFF;
+                            if (descType == 0x24) { // CS_INTERFACE
+                                int subType = rawDesc[pos + 2] & 0xFF;
+                                if (subType == 0x06 && len >= 4) { // VS_FORMAT_MJPEG
+                                    curFmt = rawDesc[pos + 3] & 0xFF;
+                                    mjpegFormatIndex = curFmt;
+                                    Log.d(TAG, "Found VS_FORMAT_MJPEG at index: " + mjpegFormatIndex);
+                                } else if (subType == 0x07 && curFmt == mjpegFormatIndex && len >= 9) { // VS_FRAME_MJPEG
+                                    int fIdx = rawDesc[pos + 3] & 0xFF;
+                                    int w = ((rawDesc[pos + 6] & 0xFF) << 8) | (rawDesc[pos + 5] & 0xFF);
+                                    int h = ((rawDesc[pos + 8] & 0xFF) << 8) | (rawDesc[pos + 7] & 0xFF);
+                                    Log.d(TAG, "MJPEG Frame " + fIdx + ": " + w + "x" + h);
+                                    if (w == 1920 && h == 1080) {
+                                        mjpegFrameIndex = fIdx;
+                                    } else if (w == 1280 && h == 720 && mjpegFrameIndex == 1) {
+                                        mjpegFrameIndex = fIdx;
+                                    }
+                                }
+                            }
+                            pos += len;
+                        }
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "Descriptor parsing skipped: " + t.getMessage());
+                }
+
+                negotiateFormat(connection, bulkIface.getId(), mjpegFormatIndex, mjpegFrameIndex);
                 startBulkReader(bulkEp);
             } else {
                 Log.e(TAG, "No video endpoint found on capture card");
@@ -561,30 +597,29 @@ public class UsbCameraPlugin extends Plugin {
     }
 
     /**
-     * UVC Probe/Commit handshake - safely asks the card for MJPEG.
-     * Wrapped in try/catch so negotiation failures never abort streaming.
+     * UVC Probe/Commit handshake - sets format and frame indices.
      */
-    private void negotiateFormat(UsbDeviceConnection conn, int ifaceId) {
+    private void negotiateFormat(UsbDeviceConnection conn, int ifaceId, int formatIdx, int frameIdx) {
         try {
             byte[] probe = new byte[26];
             probe[0] = 0x01; probe[1] = 0x00;  // bmHint: fix frame interval
-            probe[2] = 0x01;                     // bFormatIndex = 1 (MJPEG/YUY2)
-            probe[3] = 0x01;                     // bFrameIndex  = 1 (1080p/720p)
-            probe[4] = (byte)(INTERVAL_60 & 0xFF);
-            probe[5] = (byte)((INTERVAL_60 >> 8)  & 0xFF);
-            probe[6] = (byte)((INTERVAL_60 >> 16) & 0xFF);
-            probe[7] = (byte)((INTERVAL_60 >> 24) & 0xFF);
+            probe[2] = (byte)(formatIdx & 0xFF); // bFormatIndex
+            probe[3] = (byte)(frameIdx & 0xFF);  // bFrameIndex
+            probe[4] = (byte)(INTERVAL_30 & 0xFF);
+            probe[5] = (byte)((INTERVAL_30 >> 8)  & 0xFF);
+            probe[6] = (byte)((INTERVAL_30 >> 16) & 0xFF);
+            probe[7] = (byte)((INTERVAL_30 >> 24) & 0xFF);
 
             conn.controlTransfer(0x21, 0x01, 0x0100, ifaceId, probe, probe.length, 1000); // SET Probe
             conn.controlTransfer(0xA1, 0x81, 0x0100, ifaceId, probe, probe.length, 1000); // GET Probe
             conn.controlTransfer(0x21, 0x01, 0x0200, ifaceId, probe, probe.length, 1000); // SET Commit
-            Log.d(TAG, "UVC probe/commit completed successfully");
+            Log.d(TAG, "UVC probe/commit completed: format=" + formatIdx + " frame=" + frameIdx);
         } catch (Throwable t) {
-            Log.w(TAG, "Format negotiation skipped or partially completed: " + t.getMessage());
+            Log.w(TAG, "Format negotiation: " + t.getMessage());
         }
     }
 
-    // -- Bulk Frame Reader ----------------------------------------------------
+    // -- Frame-Accurate Bulk Stream Reader -------------------------------------
 
     private void startBulkReader(final UsbEndpoint endpoint) {
         running.set(true);
@@ -592,60 +627,30 @@ public class UsbCameraPlugin extends Plugin {
 
         readerThread = new Thread(() -> {
             byte[] buf = new byte[65536];
-            ByteArrayOutputStream frame = new ByteArrayOutputStream(256 * 1024);
+            ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream(256 * 1024);
             boolean inFrame = false;
-            int lastFid = -1;
 
             while (running.get() && connection != null) {
                 try {
                     int n = connection.bulkTransfer(endpoint, buf, buf.length, 1000);
                     if (n <= 0) continue;
 
-                    int headerLen = buf[0] & 0xFF;
-                    int payloadStart = 0;
+                    int p = 0;
                     boolean isEof = false;
-                    boolean isErr = false;
 
-                    // UVC payload header: byte 0 = bHeaderLength, byte 1 = bmHeaderInfo
-                    if (headerLen >= 2 && headerLen <= n) {
-                        int headerInfo = buf[1] & 0xFF;
-                        isErr = (headerInfo & 0x40) != 0;
-                        isEof = (headerInfo & 0x02) != 0;
-                        int fid = headerInfo & 0x01;
-                        payloadStart = headerLen;
-
-                        // If Frame ID toggled, any previous open frame has finished
-                        if (lastFid != -1 && fid != lastFid && inFrame) {
-                            pushCleanJpeg(frame.toByteArray());
-                            frame.reset();
-                            inFrame = false;
-                        }
-                        lastFid = fid;
+                    // Check if transfer starts with a valid UVC payload header (typically 12 bytes)
+                    int headerLen = buf[0] & 0xFF;
+                    if (headerLen >= 2 && headerLen <= 32 && headerLen <= n && (buf[1] & 0x80) == 0) {
+                        p = headerLen;
+                        isEof = (buf[1] & 0x02) != 0;
                     }
 
-                    if (isErr) {
-                        frame.reset();
-                        inFrame = false;
-                        continue;
-                    }
-
-                    int payloadLen = n - payloadStart;
-                    if (payloadLen <= 0) {
-                        if (isEof && inFrame) {
-                            pushCleanJpeg(frame.toByteArray());
-                            frame.reset();
-                            inFrame = false;
-                        }
-                        continue;
-                    }
-
-                    int p = payloadStart;
                     if (!inFrame) {
-                        // Synchronize on Start-Of-Image marker (0xFF 0xD8)
+                        // Search for JPEG Start-Of-Image marker (0xFF 0xD8)
                         while (p < n - 1) {
                             if ((buf[p] & 0xFF) == 0xFF && (buf[p + 1] & 0xFF) == 0xD8) {
                                 inFrame = true;
-                                frame.reset();
+                                frameBuffer.reset();
                                 break;
                             }
                             p++;
@@ -653,57 +658,61 @@ public class UsbCameraPlugin extends Plugin {
                     }
 
                     if (inFrame) {
-                        frame.write(buf, p, n - p);
+                        frameBuffer.write(buf, p, n - p);
 
-                        // Prevent OutOfMemoryError if corrupted stream sends runaway frame
-                        if (frame.size() > MAX_FRAME_SIZE) {
-                            frame.reset();
+                        if (frameBuffer.size() > MAX_FRAME_SIZE) {
+                            frameBuffer.reset();
                             inFrame = false;
                             continue;
                         }
 
-                        boolean hasEoi = (n >= payloadStart + 2
-                            && (buf[n - 2] & 0xFF) == 0xFF
-                            && (buf[n - 1] & 0xFF) == 0xD9);
+                        // Check for complete, verified JPEG frame
+                        byte[] raw = frameBuffer.toByteArray();
+                        int len = raw.length;
 
-                        if (isEof || hasEoi) {
-                            pushCleanJpeg(frame.toByteArray());
-                            frame.reset();
+                        // Search backward in the last 256 bytes for 0xFF 0xD9 (End of Image)
+                        int eoiIndex = -1;
+                        int searchBack = Math.max(0, len - 256);
+                        for (int i = len - 2; i >= searchBack; i--) {
+                            if ((raw[i] & 0xFF) == 0xFF && (raw[i + 1] & 0xFF) == 0xD9) {
+                                eoiIndex = i + 2;
+                                break;
+                            }
+                        }
+
+                        if (eoiIndex != -1) {
+                            byte[] clean;
+                            if (eoiIndex == len) {
+                                clean = raw;
+                            } else {
+                                clean = new byte[eoiIndex];
+                                System.arraycopy(raw, 0, clean, 0, eoiIndex);
+                            }
+                            if (clean.length > 2048) {
+                                mjpegServer.pushFrame(clean);
+                            }
+                            frameBuffer.reset();
+                            inFrame = false;
+                        } else if (isEof && len > 4096) {
+                            // If UVC signaled EOF and we have a valid image buffer
+                            byte[] patched = new byte[len + 2];
+                            System.arraycopy(raw, 0, patched, 0, len);
+                            patched[len] = (byte) 0xFF;
+                            patched[len + 1] = (byte) 0xD9;
+                            mjpegServer.pushFrame(patched);
+                            frameBuffer.reset();
                             inFrame = false;
                         }
                     }
                 } catch (Throwable t) {
-                    if (running.get()) Log.w(TAG, "Bulk reader transfer issue: " + t.getMessage());
+                    if (running.get()) Log.w(TAG, "Bulk transfer error: " + t.getMessage());
                 }
             }
         }, "usb-bulk-reader");
 
         readerThread.setDaemon(true);
         readerThread.start();
-        Log.d(TAG, "Bulk reader started safely");
-    }
-
-    private void pushCleanJpeg(byte[] data) {
-        if (data == null || data.length < 1024 || mjpegServer == null) return;
-        try {
-            // Verify Start-Of-Image marker
-            if ((data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xD8) return;
-
-            // Ensure End-Of-Image marker (0xFF 0xD9) is present at end
-            boolean endsWithEoi = (data.length >= 2
-                && (data[data.length - 2] & 0xFF) == 0xFF
-                && (data[data.length - 1] & 0xFF) == 0xD9);
-
-            if (!endsWithEoi) {
-                byte[] patched = new byte[data.length + 2];
-                System.arraycopy(data, 0, patched, 0, data.length);
-                patched[data.length] = (byte) 0xFF;
-                patched[data.length + 1] = (byte) 0xD9;
-                mjpegServer.pushFrame(patched);
-            } else {
-                mjpegServer.pushFrame(data);
-            }
-        } catch (Throwable ignored) {}
+        Log.d(TAG, "Frame-accurate bulk reader started");
     }
 
     // -- MJPEG Server Lifecycle -------------------------------------------------

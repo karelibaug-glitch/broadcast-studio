@@ -4585,7 +4585,10 @@
                         const isUsb = /usb|capture|cam link|uvc|hdmi|external|video/i.test(label.toLowerCase());
                         if (isUsb) {
                             opt.text = `🔌 ${label} (USB Capture / UVC)`;
-                            if (!detectedUsbCam) detectedUsbCam = device.deviceId;
+                            if (window.usbMjpegStreamUrl) {
+                                opt.value = '__usb_mjpeg__';
+                            }
+                            if (!detectedUsbCam) detectedUsbCam = opt.value;
                         } else {
                             opt.text = `📹 ${label}`;
                         }
@@ -4671,47 +4674,67 @@
                 return;
             }
 
+            const selectedOpt = document.querySelector(`#camera-select option[value="${camSel}"]`);
+            const optLabel = selectedOpt ? selectedOpt.text : '';
+            const isUsbCapture = camSel === '__usb_mjpeg__' || 
+                (window.usbMjpegStreamUrl && /usb|capture|cam link|uvc|hdmi|external|video grabber/i.test(optLabel + ' ' + camSel));
+
             // Native USB Capture Card path (CameraFi-style MJPEG)
-            if (camSel === '__usb_mjpeg__') {
+            if (isUsbCapture) {
                 const streamUrl = window.usbMjpegStreamUrl || 'http://127.0.0.1:8088/stream';
                 const pool = document.getElementById('video-pool-container') || document.body;
                 const img = document.createElement('img');
                 img.id = `usbimg-${srcId}`;
-                img.src = streamUrl;
-                img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1920px;height:1080px;';
                 img.crossOrigin = 'anonymous';
+                img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1280px;height:720px;';
                 pool.appendChild(img);
 
                 const canvas = document.createElement('canvas');
                 canvas.id = `usbcanvas-${srcId}`;
-                canvas.width = 1920;
-                canvas.height = 1080;
+                canvas.width = 1280;
+                canvas.height = 720;
                 canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
                 pool.appendChild(canvas);
 
                 const ctx = canvas.getContext('2d');
-                let rafId;
-                function drawLoop() {
-                    if (img.complete && img.naturalWidth > 0) {
+                let frameDrawn = false;
+                img.onload = () => {
+                    try {
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        frameDrawn = true;
+                    } catch (e) {}
+                };
+                img.src = streamUrl;
+
+                const drawInterval = setInterval(() => {
+                    if (img.complete && img.naturalWidth > 0 && !frameDrawn) {
+                        try {
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        } catch (e) {}
                     }
-                    rafId = requestAnimationFrame(drawLoop);
+                    frameDrawn = false;
+                }, 33);
+
+                let canvasStream = null;
+                try {
+                    canvasStream = canvas.captureStream ? canvas.captureStream(30) : null;
+                } catch (e) {
+                    console.warn('[Director] captureStream not supported:', e);
                 }
-                drawLoop();
 
                 window.activeVideos[srcId] = canvas;
-                window.activeStreams[srcId] = null;
+                window.activeStreams[srcId] = canvasStream;
                 window._usbRafs = window._usbRafs || {};
-                window._usbRafs[srcId] = rafId;
+                window._usbRafs[srcId] = drawInterval;
                 window._usbImgs = window._usbImgs || {};
                 window._usbImgs[srcId] = img;
 
                 state.sources.push({
                     id: srcId,
-                    name: `Camera ${count} (USB Capture Card)`,
+                    name: `Camera ${count} (${optLabel ? optLabel.split('(')[0].trim() : 'USB Capture Card'})`,
                     type: 'usb_mjpeg',
                     isRealMedia: true,
-                    resolution: '1080p60',
+                    resolution: '720p30',
                     audioDb: -14
                 });
                 document.getElementById('cameras-count').innerText = state.sources.length;

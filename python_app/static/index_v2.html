@@ -3131,7 +3131,10 @@
                         const isUsb = /usb|capture|cam link|uvc|hdmi|external|video/i.test(lowerLabel);
                         if (isUsb) {
                             label = `🔌 ${label} (USB Capture Card / UVC)`;
-                            if (!detectedUsbCam) detectedUsbCam = device.deviceId;
+                            if (window.usbMjpegStreamUrl) {
+                                option.value = '__usb_mjpeg__';
+                            }
+                            if (!detectedUsbCam) detectedUsbCam = option.value;
                         } else if (lowerLabel.includes('front') || lowerLabel.includes('user') || lowerLabel.includes('face')) {
                             label = `📱 ${label} (Front Camera)`;
                         } else if (lowerLabel.includes('back') || lowerLabel.includes('environment') || lowerLabel.includes('rear') || lowerLabel.includes('main')) {
@@ -3669,25 +3672,51 @@
             const isCaptureCard = selectedOpt &&
                 (selectedOpt.text.includes('Capture') || selectedOpt.text.includes('Cam Link') || selectedOpt.text.includes('HDMI') || selectedOpt.text.includes('🔌'));
 
+            const isUsbCapture = videoDeviceId === '__usb_mjpeg__' ||
+                (window.usbMjpegStreamUrl && (
+                    isCaptureCard ||
+                    /usb|capture|cam link|uvc|hdmi|🔌/i.test(selectedOpt ? selectedOpt.text : '') ||
+                    /usb|capture|cam link|uvc|hdmi/i.test(videoDeviceId || '')
+                ));
+
             // ── Native USB Capture Card (CameraFi-style MJPEG bridge) ─────────
-            if (videoDeviceId === '__usb_mjpeg__') {
+            if (isUsbCapture) {
                 const streamUrl = window.usbMjpegStreamUrl || 'http://127.0.0.1:8088/stream';
                 const pool = document.getElementById('video-pool-container') || document.body;
-                const img = document.createElement('img');
-                img.id = `usbimg_${Date.now()}`;
+                let img = document.getElementById('usb-mjpeg-source-img');
+                if (!img) {
+                    img = document.createElement('img');
+                    img.id = 'usb-mjpeg-source-img';
+                    img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1920px;height:1080px;';
+                    img.crossOrigin = 'anonymous';
+                    pool.appendChild(img);
+                }
                 img.src = streamUrl;
-                img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1920px;height:1080px;';
-                img.crossOrigin = 'anonymous';
-                pool.appendChild(img);
+
                 const canvas = document.createElement('canvas');
                 canvas.width = 1920; canvas.height = 1080;
                 canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
                 pool.appendChild(canvas);
                 const ctx = canvas.getContext('2d');
-                (function drawLoop() { if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, 0, 0, 1920, 1080); requestAnimationFrame(drawLoop); })();
-                const fakeStream = canvas.captureStream(60);
+
+                img.onload = () => {
+                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                        if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                        }
+                        ctx.drawImage(img, 0, 0);
+                    }
+                };
+                setInterval(() => {
+                    if (img.complete && img.naturalWidth > 0) {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    }
+                }, 33);
+
+                const fakeStream = canvas.captureStream(30);
                 fakeStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
-                const layer = { id: 'layer_' + Date.now(), type: 'camera', title: 'USB Capture Card', x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(), audio: { volume: 1, muted: false } };
+                const layer = { id: 'layer_' + Date.now(), type: 'camera', title: layerTitle || 'USB Capture Card', x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(), audio: { volume: 1, muted: false } };
                 window.layers[layer.id] = layer;
                 window.localStreams[layer.id] = fakeStream;
                 renderControllerLayer(layer.id);
