@@ -290,6 +290,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.ImageFormat;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
@@ -304,17 +307,26 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import com.herohan.uvcapp.CameraHelper;
+import com.herohan.uvcapp.ICameraHelper;
+import com.serenegiant.usb.IFrameCallback;
+import com.serenegiant.usb.Size;
+import com.serenegiant.usb.UVCCamera;
+
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * UsbCameraPlugin - Capacitor native plugin implementing stable USB capture card streaming.
+ * UsbCameraPlugin - Capacitor native plugin implementing rock-solid USB capture card streaming.
  *
- * Uses Android USB Host API (android.hardware.usb) with rock-solid crash prevention
- * and frame-accurate MJPEG synchronization.
+ * Dual-Engine Architecture:
+ * 1. Native UVC Engine (UVCAndroid / libuvc + libusb NDK) for hardware-accelerated 30/60fps video.
+ * 2. Hardened Bulk Reader Fallback (Android USB Host API with FID tracking) for maximum compatibility.
  */
 @CapacitorPlugin(name = "UsbCamera")
 public class UsbCameraPlugin extends Plugin {
@@ -335,6 +347,11 @@ public class UsbCameraPlugin extends Plugin {
     private UsbMjpegServer mjpegServer;
     private BroadcastReceiver usbReceiver;
     private final ExecutorService workerExecutor = Executors.newSingleThreadExecutor();
+
+    // Native UVC Engine
+    private CameraHelper mCameraHelper;
+    private int currentWidth = TARGET_W;
+    private int currentHeight = TARGET_H;
 
     // -- Plugin Lifecycle -------------------------------------------------------
 
@@ -393,7 +410,7 @@ public class UsbCameraPlugin extends Plugin {
                             if (granted) {
                                 if (device != null) {
                                     final UsbDevice devToOpen = device;
-                                    workerExecutor.execute(() -> openAndStream(devToOpen));
+                                    workerExecutor.execute(() -> startCapture(devToOpen));
                                 } else {
                                     scanForExistingDevices();
                                 }
@@ -469,6 +486,27 @@ public class UsbCameraPlugin extends Plugin {
             notifyListeners("usbCameraAttached", data);
             Log.d(TAG, "UVC device attached: " + name);
 
+            startCapture(device);
+        } catch (Throwable t) {
+            Log.e(TAG, "Error handling device attach", t);
+        }
+    }
+
+    private void startCapture(final UsbDevice device) {
+        if (device == null) return;
+
+        // Attempt 1: Native UVC Engine (UVCAndroid / libuvc NDK)
+        try {
+            if (initNativeCameraHelper(device)) {
+                Log.d(TAG, "Native UVC engine successfully assigned to device: " + device.getDeviceName());
+                return;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Native UVC engine init error, falling back to Java USB Host: " + t.getMessage());
+        }
+
+        // Attempt 2: Java USB Host API with standard Android permission
+        if (usbManager != null) {
             if (usbManager.hasPermission(device)) {
                 final UsbDevice dev = device;
                 workerExecutor.execute(() -> openAndStream(dev));
@@ -484,8 +522,6 @@ public class UsbCameraPlugin extends Plugin {
                 PendingIntent pi = PendingIntent.getBroadcast(getContext(), 0, permIntent, flags);
                 usbManager.requestPermission(device, pi);
             }
-        } catch (Throwable t) {
-            Log.e(TAG, "Error handling device attach", t);
         }
     }
 
@@ -497,7 +533,168 @@ public class UsbCameraPlugin extends Plugin {
         });
     }
 
-    // -- USB Streaming Setup (Background Thread) --------------------------------
+    // -- Engine 1: Native UVC Camera (UVCAndroid) -------------------------------
+
+    private synchronized boolean initNativeCameraHelper(final UsbDevice device) {
+        try {
+            if (mCameraHelper != null) {
+                try {
+                    mCameraHelper.stopPreview();
+                    mCameraHelper.closeCamera();
+                    mCameraHelper.release();
+                } catch (Throwable ignored) {}
+                mCameraHelper = null;
+            }
+
+            mCameraHelper = new CameraHelper();
+            mCameraHelper.setStateCallback(new ICameraHelper.StateCallback() {
+                @Override
+                public void onAttach(UsbDevice dev) {
+                    Log.d(TAG, "Native UVC onAttach: " + (dev != null ? dev.getDeviceName() : "null"));
+                    if (mCameraHelper != null && dev != null) {
+                        mCameraHelper.selectDevice(dev);
+                    }
+                }
+
+                @Override
+                public void onDeviceOpen(UsbDevice dev, boolean isFirstOpen) {
+                    Log.d(TAG, "Native UVC onDeviceOpen, isFirstOpen=" + isFirstOpen);
+                    if (mCameraHelper != null) {
+                        mCameraHelper.openCamera();
+                    }
+                }
+
+                @Override
+                public void onCameraOpen(UsbDevice dev) {
+                    Log.d(TAG, "Native UVC onCameraOpen: configuring preview stream");
+                    running.set(true);
+
+                    Size targetSize = null;
+                    try {
+                        List<Size> sizes = mCameraHelper.getSupportedSizeList();
+                        if (sizes != null && !sizes.isEmpty()) {
+                            for (Size s : sizes) {
+                                if (s.width == 1920 && s.height == 1080) {
+                                    targetSize = s;
+                                    break;
+                                }
+                            }
+                            if (targetSize == null) {
+                                for (Size s : sizes) {
+                                    if (s.width == 1280 && s.height == 720) {
+                                        targetSize = s;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (targetSize == null) {
+                                targetSize = sizes.get(0);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "Could not query supported sizes: " + t.getMessage());
+                    }
+
+                    if (targetSize != null) {
+                        try {
+                            mCameraHelper.setPreviewSize(targetSize);
+                            currentWidth = targetSize.width;
+                            currentHeight = targetSize.height;
+                        } catch (Throwable ignored) {}
+                    } else {
+                        currentWidth = TARGET_W;
+                        currentHeight = TARGET_H;
+                    }
+
+                    try {
+                        mCameraHelper.setFrameCallback(new IFrameCallback() {
+                            @Override
+                            public void onFrame(ByteBuffer frame) {
+                                handleNativeFrame(frame);
+                            }
+                        }, UVCCamera.PIXEL_FORMAT_NV21);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Failed to register frame callback: " + t.getMessage());
+                    }
+
+                    try {
+                        mCameraHelper.startPreview();
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Failed to start native preview: " + t.getMessage());
+                    }
+
+                    startMjpegServer();
+                }
+
+                @Override
+                public void onCameraClose(UsbDevice dev) {
+                    Log.d(TAG, "Native UVC onCameraClose");
+                }
+
+                @Override
+                public void onDeviceClose(UsbDevice dev) {
+                    Log.d(TAG, "Native UVC onDeviceClose");
+                }
+
+                @Override
+                public void onDetach(UsbDevice dev) {
+                    Log.d(TAG, "Native UVC onDetach");
+                    handleDeviceDetached();
+                }
+
+                @Override
+                public void onCancel(UsbDevice dev) {
+                    Log.w(TAG, "Native UVC onCancel (permission cancelled or denied)");
+                    JSObject err = new JSObject();
+                    err.put("message", "USB capture permission was cancelled or denied.");
+                    notifyListeners("usbCameraError", err);
+                }
+            });
+
+            mCameraHelper.selectDevice(device);
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "Native CameraHelper init error: " + t.getMessage() + ", falling back to Java USB Host");
+            if (mCameraHelper != null) {
+                try { mCameraHelper.release(); } catch (Throwable ignored) {}
+                mCameraHelper = null;
+            }
+            return false;
+        }
+    }
+
+    private void handleNativeFrame(ByteBuffer frame) {
+        if (frame == null || !running.get() || mjpegServer == null) return;
+        try {
+            int len = frame.remaining();
+            if (len <= 0) return;
+
+            // Direct pass-through if frame begins with JPEG SOI (0xFF 0xD8)
+            if (len > 4 && (frame.get(0) & 0xFF) == 0xFF && (frame.get(1) & 0xFF) == 0xD8) {
+                byte[] jpeg = new byte[len];
+                frame.get(jpeg);
+                mjpegServer.pushFrame(jpeg);
+                return;
+            }
+
+            // NV21 to JPEG encoding
+            int w = currentWidth > 0 ? currentWidth : 1280;
+            int h = currentHeight > 0 ? currentHeight : 720;
+            int expected = (w * h * 3) / 2;
+            if (len >= expected) {
+                byte[] nv21 = new byte[len];
+                frame.get(nv21);
+                YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, w, h, null);
+                ByteArrayOutputStream out = new ByteArrayOutputStream(expected / 4);
+                yuv.compressToJpeg(new Rect(0, 0, w, h), 85, out);
+                mjpegServer.pushFrame(out.toByteArray());
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error processing native frame: " + t.getMessage());
+        }
+    }
+
+    // -- Engine 2: Java USB Host API Fallback -----------------------------------
 
     private synchronized void openAndStream(UsbDevice device) {
         try {
@@ -587,8 +784,12 @@ public class UsbCameraPlugin extends Plugin {
                                     Log.d(TAG, "MJPEG Frame " + fIdx + ": " + w + "x" + h);
                                     if (w == 1920 && h == 1080) {
                                         mjpegFrameIndex = fIdx;
+                                        currentWidth = 1920;
+                                        currentHeight = 1080;
                                     } else if (w == 1280 && h == 720 && mjpegFrameIndex == 1) {
                                         mjpegFrameIndex = fIdx;
+                                        currentWidth = 1280;
+                                        currentHeight = 720;
                                     }
                                 }
                             }
@@ -782,8 +983,8 @@ public class UsbCameraPlugin extends Plugin {
             Log.d(TAG, "MJPEG server: http://127.0.0.1:8088/stream");
             JSObject result = new JSObject();
             result.put("url",    "http://127.0.0.1:8088/stream");
-            result.put("width",  TARGET_W);
-            result.put("height", TARGET_H);
+            result.put("width",  currentWidth);
+            result.put("height", currentHeight);
             notifyListeners("usbCameraReady", result);
         } catch (Throwable e) {
             Log.e(TAG, "Failed to start MJPEG server", e);
@@ -811,6 +1012,14 @@ public class UsbCameraPlugin extends Plugin {
 
     private synchronized void stopStreaming() {
         running.set(false);
+        if (mCameraHelper != null) {
+            try {
+                mCameraHelper.stopPreview();
+                mCameraHelper.closeCamera();
+                mCameraHelper.release();
+            } catch (Throwable ignored) {}
+            mCameraHelper = null;
+        }
         if (readerThread != null) {
             try { readerThread.interrupt(); } catch (Throwable ignored) {}
             readerThread = null;
