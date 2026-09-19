@@ -94,21 +94,42 @@ if (fs.existsSync(manifestPath)) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Patch android/app/build.gradle - add NanoHTTPD dependency
+// 3. Patch android/app/build.gradle - add UVCAndroid & NanoHTTPD dependencies
 // ---------------------------------------------------------------------------
 const appBuildGradlePath = path.join(__dirname, 'android', 'app', 'build.gradle');
 if (fs.existsSync(appBuildGradlePath)) {
     let gradle = fs.readFileSync(appBuildGradlePath, 'utf8');
-    if (!gradle.includes('nanohttpd')) {
+    if (!gradle.includes('com.herohan:UVCAndroid')) {
         gradle = gradle.replace(
             /dependencies\s*\{/,
-            `dependencies {\n    // NanoHTTPD: tiny embedded HTTP server for local USB MJPEG stream\n    implementation 'org.nanohttpd:nanohttpd:2.3.1'`
+            `dependencies {\n    // Native UVC Video Engine (libuvc + libusb NDK)\n    implementation 'com.herohan:UVCAndroid:1.0.13'\n    // NanoHTTPD: tiny embedded HTTP server for local stream fallback\n    implementation 'org.nanohttpd:nanohttpd:2.3.1'`
         );
         fs.writeFileSync(appBuildGradlePath, gradle, 'utf8');
-        console.log('[OK] Patched android/app/build.gradle with NanoHTTPD dependency');
+        console.log('[OK] Patched android/app/build.gradle with UVCAndroid and NanoHTTPD dependencies');
     }
 } else {
     console.warn('android/app/build.gradle not found (will be present during CI build)');
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Patch proguard-rules.pro for UVCAndroid native callbacks
+// ---------------------------------------------------------------------------
+const proguardPath = path.join(__dirname, 'android', 'app', 'proguard-rules.pro');
+if (fs.existsSync(proguardPath)) {
+    let proguard = fs.readFileSync(proguardPath, 'utf8');
+    const uvcRules = `
+# UVCAndroid & UVCCamera native JNI keeps
+-keep class com.herohan.uvcapp.** { *; }
+-keep class com.serenegiant.usb.** { *; }
+-keepclassmembers class * implements com.serenegiant.usb.IButtonCallback { *; }
+-keepclassmembers class * implements com.serenegiant.usb.IFrameCallback { *; }
+-keepclassmembers class * implements com.serenegiant.usb.IStatusCallback { *; }
+`;
+    if (!proguard.includes('com.herohan.uvcapp')) {
+        proguard += uvcRules;
+        fs.writeFileSync(proguardPath, proguard, 'utf8');
+        console.log('[OK] Patched proguard-rules.pro for UVCAndroid');
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -629,6 +650,7 @@ public class UsbCameraPlugin extends Plugin {
             byte[] buf = new byte[65536];
             ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream(256 * 1024);
             boolean inFrame = false;
+            int lastFid = -1;
 
             while (running.get() && connection != null) {
                 try {
@@ -638,15 +660,48 @@ public class UsbCameraPlugin extends Plugin {
                     int p = 0;
                     boolean isEof = false;
 
-                    // Check if transfer starts with a valid UVC payload header (typically 12 bytes)
-                    int headerLen = buf[0] & 0xFF;
-                    if (headerLen >= 2 && headerLen <= 32 && headerLen <= n && (buf[1] & 0x80) == 0) {
-                        p = headerLen;
+                    // UVC Payload Header detection:
+                    // Header length is typically 12 bytes (or 2-32 bytes).
+                    // buf[0] is bHeaderLength. buf[1] is bmHeaderInfo.
+                    // Bit 7 of buf[1] is reserved and MUST be 0 in standard UVC.
+                    int hLen = buf[0] & 0xFF;
+                    if (hLen >= 2 && hLen <= 32 && hLen <= n && (buf[1] & 0x80) == 0) {
+                        int fid = buf[1] & 0x01;
                         isEof = (buf[1] & 0x02) != 0;
+                        boolean isErr = (buf[1] & 0x40) != 0;
+
+                        if (isErr) {
+                            // Frame error reported by UVC hardware - discard broken segment
+                            frameBuffer.reset();
+                            inFrame = false;
+                            continue;
+                        }
+
+                        // If FID toggled, a new video frame has started
+                        if (lastFid != -1 && fid != lastFid) {
+                            if (inFrame && frameBuffer.size() > 4096) {
+                                byte[] raw = frameBuffer.toByteArray();
+                                int len = raw.length;
+                                // Verify EOI or append if clean JPEG
+                                if ((raw[len - 2] & 0xFF) == 0xFF && (raw[len - 1] & 0xFF) == 0xD9) {
+                                    mjpegServer.pushFrame(raw);
+                                } else {
+                                    byte[] patched = new byte[len + 2];
+                                    System.arraycopy(raw, 0, patched, 0, len);
+                                    patched[len] = (byte) 0xFF;
+                                    patched[len + 1] = (byte) 0xD9;
+                                    mjpegServer.pushFrame(patched);
+                                }
+                            }
+                            frameBuffer.reset();
+                            inFrame = false;
+                        }
+                        lastFid = fid;
+                        p = hLen;
                     }
 
                     if (!inFrame) {
-                        // Search for JPEG Start-Of-Image marker (0xFF 0xD8)
+                        // Scan for JPEG Start-Of-Image marker (0xFF 0xD8)
                         while (p < n - 1) {
                             if ((buf[p] & 0xFF) == 0xFF && (buf[p + 1] & 0xFF) == 0xD8) {
                                 inFrame = true;
@@ -657,7 +712,7 @@ public class UsbCameraPlugin extends Plugin {
                         }
                     }
 
-                    if (inFrame) {
+                    if (inFrame && p < n) {
                         frameBuffer.write(buf, p, n - p);
 
                         if (frameBuffer.size() > MAX_FRAME_SIZE) {
@@ -666,11 +721,10 @@ public class UsbCameraPlugin extends Plugin {
                             continue;
                         }
 
-                        // Check for complete, verified JPEG frame
+                        // Check for End-Of-Image marker (0xFF 0xD9) or EOF flag
                         byte[] raw = frameBuffer.toByteArray();
                         int len = raw.length;
 
-                        // Search backward in the last 256 bytes for 0xFF 0xD9 (End of Image)
                         int eoiIndex = -1;
                         int searchBack = Math.max(0, len - 256);
                         for (int i = len - 2; i >= searchBack; i--) {
@@ -694,7 +748,6 @@ public class UsbCameraPlugin extends Plugin {
                             frameBuffer.reset();
                             inFrame = false;
                         } else if (isEof && len > 4096) {
-                            // If UVC signaled EOF and we have a valid image buffer
                             byte[] patched = new byte[len + 2];
                             System.arraycopy(raw, 0, patched, 0, len);
                             patched[len] = (byte) 0xFF;
