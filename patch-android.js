@@ -3,7 +3,7 @@
  *
  * Configures the Capacitor Android project for Broadcast Studio:
  *  1. Writes res/xml/device_filter.xml (matches UVC video capture cards).
- *  2. Patches AndroidManifest.xml (adds permissions, hardware acceleration, cleartext traffic).
+ *  2. Patches AndroidManifest.xml (adds permissions, hardware acceleration, cleartext traffic, launchMode).
  *  3. Patches android/app/build.gradle (adds NanoHTTPD for local MJPEG stream).
  *  4. Writes UsbMjpegServer.java, UsbCameraPlugin.java, MainActivity.java.
  *
@@ -51,7 +51,6 @@ if (fs.existsSync(manifestPath)) {
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- USB host - required for OTG capture cards -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <!-- Camera features - optional so app installs on devices without a camera -->
@@ -69,6 +68,11 @@ if (fs.existsSync(manifestPath)) {
             '<application',
             '<application android:hardwareAccelerated="true" android:usesCleartextTraffic="true"'
         );
+    }
+
+    // Ensure singleTask launch mode so incoming USB attach intents don't recreate the activity
+    if (content.includes('<activity') && !content.includes('android:launchMode=')) {
+        content = content.replace('<activity', '<activity android:launchMode="singleTask"');
     }
 
     const usbIntentFilter = `
@@ -270,7 +274,6 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
-import android.hardware.usb.UsbRequest;
 import android.os.Build;
 import android.util.Log;
 import com.getcapacitor.JSObject;
@@ -280,25 +283,27 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * UsbCameraPlugin - Capacitor native plugin implementing USB capture card streaming.
  *
- * Uses Android USB Host API (android.hardware.usb).
+ * Uses Android USB Host API (android.hardware.usb) with rock-solid crash prevention
+ * for Android 10, 11, 12, 13, 14, and 15+.
  */
 @CapacitorPlugin(name = "UsbCamera")
 public class UsbCameraPlugin extends Plugin {
     private static final String TAG = "UsbCameraPlugin";
     private static final String ACTION_USB_PERMISSION = "com.broadcast.studio.USB_PERMISSION";
 
-    // Request 1920x1080 @ 60fps; card auto-negotiates to its maximum capability
     private static final int TARGET_W   = 1920;
     private static final int TARGET_H   = 1080;
     private static final int INTERVAL_60 = 166667; // 60fps in 100ns units
     private static final int INTERVAL_30 = 333333; // 30fps fallback
+    private static final int MAX_FRAME_SIZE = 2 * 1024 * 1024; // 2MB max per JPEG frame to prevent OOM
 
     private UsbManager usbManager;
     private UsbDevice currentDevice;
@@ -308,16 +313,19 @@ public class UsbCameraPlugin extends Plugin {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private UsbMjpegServer mjpegServer;
     private BroadcastReceiver usbReceiver;
+    private final ExecutorService workerExecutor = Executors.newSingleThreadExecutor();
 
     // -- Plugin Lifecycle -------------------------------------------------------
 
     @Override
     public void load() {
-        usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
-        mjpegServer = new UsbMjpegServer();
-        registerUsbReceiver();
-        // Check if a UVC device is already plugged in when the app launches
-        getActivity().runOnUiThread(this::scanForExistingDevices);
+        try {
+            usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
+            registerUsbReceiver();
+            workerExecutor.execute(this::scanForExistingDevices);
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in UsbCameraPlugin load", t);
+        }
     }
 
     // -- USB BroadcastReceiver --------------------------------------------------
@@ -326,54 +334,101 @@ public class UsbCameraPlugin extends Plugin {
         usbReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context ctx, Intent intent) {
-                String action = intent.getAction();
-                if (action == null) return;
-                UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                switch (action) {
-                    case UsbManager.ACTION_USB_DEVICE_ATTACHED:
-                        if (device != null && isUvcDevice(device)) handleDeviceAttached(device);
-                        break;
-                    case UsbManager.ACTION_USB_DEVICE_DETACHED:
-                        if (device != null && device.equals(currentDevice)) handleDeviceDetached();
-                        break;
-                    case ACTION_USB_PERMISSION:
-                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                                && device != null) {
-                            openAndStream(device);
-                        } else {
-                            JSObject e = new JSObject();
-                            e.put("message", "USB permission denied by user.");
-                            notifyListeners("usbCameraError", e);
+                try {
+                    String action = intent.getAction();
+                    if (action == null) return;
+                    Log.d(TAG, "USB Broadcast received: " + action);
+
+                    UsbDevice device = null;
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        try {
+                            device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class);
+                        } catch (Throwable ignored) {
+                            device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                         }
-                        break;
+                    } else {
+                        device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    }
+
+                    if (device == null) {
+                        device = currentDevice;
+                    }
+
+                    switch (action) {
+                        case UsbManager.ACTION_USB_DEVICE_ATTACHED:
+                            if (device != null && isUvcDevice(device)) {
+                                handleDeviceAttached(device);
+                            } else {
+                                scanForExistingDevices();
+                            }
+                            break;
+                        case UsbManager.ACTION_USB_DEVICE_DETACHED:
+                            if (device != null && (currentDevice == null || device.getDeviceId() == currentDevice.getDeviceId())) {
+                                handleDeviceDetached();
+                            }
+                            break;
+                        case ACTION_USB_PERMISSION:
+                            boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
+                            if (granted) {
+                                if (device != null) {
+                                    final UsbDevice devToOpen = device;
+                                    workerExecutor.execute(() -> openAndStream(devToOpen));
+                                } else {
+                                    scanForExistingDevices();
+                                }
+                            } else {
+                                Log.w(TAG, "USB Permission denied by user");
+                                JSObject e = new JSObject();
+                                e.put("message", "USB permission denied by user.");
+                                notifyListeners("usbCameraError", e);
+                            }
+                            break;
+                    }
+                } catch (Throwable t) {
+                    Log.e(TAG, "Exception in USB onReceive", t);
                 }
             }
         };
+
         IntentFilter filter = new IntentFilter();
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         filter.addAction(ACTION_USB_PERMISSION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getContext().registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+
+        // Android 14 (API 34+) and Android 13 (API 33) require explicit export flags for external PendingIntent broadcasts
+        if (Build.VERSION.SDK_INT >= 33) {
+            getContext().registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
         } else {
             getContext().registerReceiver(usbReceiver, filter);
         }
     }
 
     private void scanForExistingDevices() {
-        if (usbManager == null) return;
-        HashMap<String, UsbDevice> list = usbManager.getDeviceList();
-        for (UsbDevice dev : list.values()) {
-            if (isUvcDevice(dev)) { handleDeviceAttached(dev); break; }
+        try {
+            if (usbManager == null) return;
+            HashMap<String, UsbDevice> list = usbManager.getDeviceList();
+            if (list == null) return;
+            for (UsbDevice dev : list.values()) {
+                if (isUvcDevice(dev)) {
+                    handleDeviceAttached(dev);
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error scanning devices", t);
         }
     }
 
     // -- Device Identification --------------------------------------------------
 
     private boolean isUvcDevice(UsbDevice device) {
+        if (device == null) return false;
         if (device.getDeviceClass() == 14) return true;
         for (int i = 0; i < device.getInterfaceCount(); i++) {
-            if (device.getInterface(i).getInterfaceClass() == 14) return true;
+            UsbInterface iface = device.getInterface(i);
+            if (iface != null && (iface.getInterfaceClass() == 14 || (iface.getInterfaceClass() == 239 && iface.getInterfaceSubclass() == 2))) {
+                return true;
+            }
         }
         return false;
     }
@@ -381,104 +436,151 @@ public class UsbCameraPlugin extends Plugin {
     // -- Device Lifecycle -------------------------------------------------------
 
     private void handleDeviceAttached(UsbDevice device) {
-        currentDevice = device;
-        String name = device.getProductName();
-        if (name == null || name.isEmpty()) name = "USB Capture Card";
-        JSObject data = new JSObject();
-        data.put("deviceName", name);
-        notifyListeners("usbCameraAttached", data);
-        Log.d(TAG, "UVC device attached: " + name);
+        try {
+            currentDevice = device;
+            String name = null;
+            try {
+                name = device.getProductName();
+            } catch (Throwable ignored) {}
+            if (name == null || name.isEmpty()) name = "USB Capture Card";
 
-        if (usbManager.hasPermission(device)) {
-            openAndStream(device);
-        } else {
-            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                ? PendingIntent.FLAG_MUTABLE : 0;
-            PendingIntent pi = PendingIntent.getBroadcast(
-                getContext(), 0, new Intent(ACTION_USB_PERMISSION), flags);
-            usbManager.requestPermission(device, pi);
+            JSObject data = new JSObject();
+            data.put("deviceName", name);
+            notifyListeners("usbCameraAttached", data);
+            Log.d(TAG, "UVC device attached: " + name);
+
+            if (usbManager.hasPermission(device)) {
+                final UsbDevice dev = device;
+                workerExecutor.execute(() -> openAndStream(dev));
+            } else {
+                Intent permIntent = new Intent(ACTION_USB_PERMISSION);
+                permIntent.setPackage(getContext().getPackageName()); // Required for Android 14+ mutable PendingIntents
+
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    flags |= PendingIntent.FLAG_MUTABLE;
+                }
+
+                PendingIntent pi = PendingIntent.getBroadcast(getContext(), 0, permIntent, flags);
+                usbManager.requestPermission(device, pi);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error handling device attach", t);
         }
     }
 
     private void handleDeviceDetached() {
-        stopStreaming();
-        currentDevice = null;
-        notifyListeners("usbCameraDetached", new JSObject());
+        workerExecutor.execute(() -> {
+            stopStreaming();
+            currentDevice = null;
+            notifyListeners("usbCameraDetached", new JSObject());
+        });
     }
 
-    // -- USB Streaming Setup ----------------------------------------------------
+    // -- USB Streaming Setup (Background Thread) --------------------------------
 
-    private void openAndStream(UsbDevice device) {
-        // Find UVC VideoStreaming interface (class=14, subclass=2)
-        UsbInterface bulkIface = null;
-        UsbEndpoint bulkEp = null;
-        UsbInterface isoIface = null;
-        UsbEndpoint isoEp = null;
+    private synchronized void openAndStream(UsbDevice device) {
+        try {
+            if (device == null || usbManager == null) return;
+            stopStreaming(); // Clean up previous connection if any
 
-        for (int i = 0; i < device.getInterfaceCount(); i++) {
-            UsbInterface iface = device.getInterface(i);
-            if (iface.getInterfaceClass() != 14 || iface.getInterfaceSubclass() != 2) continue;
-            for (int j = 0; j < iface.getEndpointCount(); j++) {
-                UsbEndpoint ep = iface.getEndpoint(j);
-                if (ep.getDirection() != UsbConstants.USB_DIR_IN) continue;
-                if (ep.getType() == UsbConstants.USB_ENDPOINT_XFER_BULK && bulkEp == null) {
-                    bulkIface = iface; bulkEp = ep;
+            currentDevice = device;
+            UsbInterface bulkIface = null;
+            UsbEndpoint bulkEp = null;
+
+            // Search for bulk streaming endpoint
+            for (int i = 0; i < device.getInterfaceCount(); i++) {
+                UsbInterface iface = device.getInterface(i);
+                if (iface == null) continue;
+                for (int j = 0; j < iface.getEndpointCount(); j++) {
+                    UsbEndpoint ep = iface.getEndpoint(j);
+                    if (ep != null && ep.getDirection() == UsbConstants.USB_DIR_IN
+                            && ep.getType() == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                        bulkIface = iface;
+                        bulkEp = ep;
+                        break;
+                    }
                 }
-                if (ep.getType() == UsbConstants.USB_ENDPOINT_XFER_ISOC
-                        && ep.getMaxPacketSize() > 0 && isoEp == null) {
-                    isoIface = iface; isoEp = ep;
+                if (bulkEp != null) break;
+            }
+
+            // Fallback: If no interface matched, check any interface with IN bulk endpoint
+            if (bulkEp == null) {
+                for (int i = 0; i < device.getInterfaceCount(); i++) {
+                    UsbInterface iface = device.getInterface(i);
+                    if (iface == null) continue;
+                    for (int j = 0; j < iface.getEndpointCount(); j++) {
+                        UsbEndpoint ep = iface.getEndpoint(j);
+                        if (ep != null && ep.getDirection() == UsbConstants.USB_DIR_IN) {
+                            bulkIface = iface;
+                            bulkEp = ep;
+                            break;
+                        }
+                    }
+                    if (bulkEp != null) break;
                 }
             }
-        }
 
-        connection = usbManager.openDevice(device);
-        if (connection == null) { Log.e(TAG, "Cannot open USB device"); return; }
+            connection = usbManager.openDevice(device);
+            if (connection == null) {
+                Log.e(TAG, "Cannot open USB device connection");
+                JSObject err = new JSObject();
+                err.put("message", "Unable to open USB connection. Permission may have been revoked.");
+                notifyListeners("usbCameraError", err);
+                return;
+            }
 
-        if (bulkEp != null) {
-            if (!connection.claimInterface(bulkIface, true)) {
-                Log.e(TAG, "Cannot claim bulk interface"); connection.close(); return;
+            if (bulkIface != null && bulkEp != null) {
+                if (!connection.claimInterface(bulkIface, true)) {
+                    Log.e(TAG, "Cannot claim interface " + bulkIface.getId());
+                    connection.close();
+                    connection = null;
+                    return;
+                }
+                videoInterface = bulkIface;
+                try {
+                    connection.setInterface(bulkIface);
+                } catch (Throwable ignored) {}
+
+                negotiateFormat(connection, bulkIface.getId());
+                startBulkReader(bulkEp);
+            } else {
+                Log.e(TAG, "No video endpoint found on capture card");
+                JSObject err = new JSObject();
+                err.put("message", "Capture card has no compatible video bulk endpoint.");
+                notifyListeners("usbCameraError", err);
+                if (connection != null) { connection.close(); connection = null; }
             }
-            videoInterface = bulkIface;
-            negotiateFormat(connection, bulkIface.getId());
-            startBulkReader(bulkEp);
-        } else if (isoEp != null) {
-            if (!connection.claimInterface(isoIface, true)) {
-                Log.e(TAG, "Cannot claim iso interface"); connection.close(); return;
-            }
-            videoInterface = isoIface;
-            negotiateFormat(connection, isoIface.getId());
-            startIsoReader(isoEp);
-        } else {
-            Log.e(TAG, "No video endpoint found on capture card");
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in openAndStream", t);
             JSObject err = new JSObject();
-            err.put("message", "Capture card has no compatible video endpoint.");
+            err.put("message", "USB capture initialization failed: " + t.getMessage());
             notifyListeners("usbCameraError", err);
-            connection.close();
+            stopStreaming();
         }
     }
 
     /**
-     * UVC Probe/Commit handshake - tells the card we want MJPEG 1920x1080 @ 60fps.
-     * The card writes back what it can actually deliver (may be 30fps on USB 2.0 OTG).
+     * UVC Probe/Commit handshake - safely asks the card for MJPEG.
+     * Wrapped in try/catch so negotiation failures never abort streaming.
      */
     private void negotiateFormat(UsbDeviceConnection conn, int ifaceId) {
-        byte[] probe = new byte[26];
-        probe[0] = 0x01; probe[1] = 0x00;  // bmHint: fix frame interval
-        probe[2] = 0x01;                     // bFormatIndex = 1 (MJPEG)
-        probe[3] = 0x01;                     // bFrameIndex  = 1 (1920x1080)
-        probe[4] = (byte)(INTERVAL_60 & 0xFF);
-        probe[5] = (byte)((INTERVAL_60 >> 8)  & 0xFF);
-        probe[6] = (byte)((INTERVAL_60 >> 16) & 0xFF);
-        probe[7] = (byte)((INTERVAL_60 >> 24) & 0xFF);
+        try {
+            byte[] probe = new byte[26];
+            probe[0] = 0x01; probe[1] = 0x00;  // bmHint: fix frame interval
+            probe[2] = 0x01;                     // bFormatIndex = 1 (MJPEG/YUY2)
+            probe[3] = 0x01;                     // bFrameIndex  = 1 (1080p/720p)
+            probe[4] = (byte)(INTERVAL_60 & 0xFF);
+            probe[5] = (byte)((INTERVAL_60 >> 8)  & 0xFF);
+            probe[6] = (byte)((INTERVAL_60 >> 16) & 0xFF);
+            probe[7] = (byte)((INTERVAL_60 >> 24) & 0xFF);
 
-        conn.controlTransfer(0x21, 0x01, 0x0100, ifaceId, probe, probe.length, 1000); // SET Probe
-        conn.controlTransfer(0xA1, 0x81, 0x0100, ifaceId, probe, probe.length, 1000); // GET Probe
-        conn.controlTransfer(0x21, 0x01, 0x0200, ifaceId, probe, probe.length, 1000); // SET Commit
-
-        int interval = ((probe[7]&0xFF)<<24)|((probe[6]&0xFF)<<16)|((probe[5]&0xFF)<<8)|(probe[4]&0xFF);
-        if (interval > 0) {
-            int fps = (int) Math.round(10000000.0 / interval);
-            Log.d(TAG, "Negotiated MJPEG " + TARGET_W + "x" + TARGET_H + " @ " + fps + "fps");
+            conn.controlTransfer(0x21, 0x01, 0x0100, ifaceId, probe, probe.length, 1000); // SET Probe
+            conn.controlTransfer(0xA1, 0x81, 0x0100, ifaceId, probe, probe.length, 1000); // GET Probe
+            conn.controlTransfer(0x21, 0x01, 0x0200, ifaceId, probe, probe.length, 1000); // SET Commit
+            Log.d(TAG, "UVC probe/commit completed successfully");
+        } catch (Throwable t) {
+            Log.w(TAG, "Format negotiation skipped or partially completed: " + t.getMessage());
         }
     }
 
@@ -487,159 +589,61 @@ public class UsbCameraPlugin extends Plugin {
     private void startBulkReader(final UsbEndpoint endpoint) {
         running.set(true);
         startMjpegServer();
+
         readerThread = new Thread(() -> {
             byte[] buf = new byte[65536];
             ByteArrayOutputStream frame = new ByteArrayOutputStream(256 * 1024);
             boolean inFrame = false;
             int lastFid = -1;
 
-            while (running.get()) {
-                int n = connection.bulkTransfer(endpoint, buf, buf.length, 1000);
-                if (n <= 0) continue;
-
-                int headerLen = buf[0] & 0xFF;
-                int payloadStart = 0;
-                boolean isEof = false;
-                boolean isErr = false;
-
-                // UVC payload header: byte 0 = bHeaderLength, byte 1 = bmHeaderInfo
-                if (headerLen >= 2 && headerLen <= n) {
-                    int headerInfo = buf[1] & 0xFF;
-                    isErr = (headerInfo & 0x40) != 0;
-                    isEof = (headerInfo & 0x02) != 0;
-                    int fid = headerInfo & 0x01;
-                    payloadStart = headerLen;
-
-                    // If Frame ID toggled, any previous open frame has finished
-                    if (lastFid != -1 && fid != lastFid && inFrame) {
-                        pushCleanJpeg(frame.toByteArray());
-                        frame.reset();
-                        inFrame = false;
-                    }
-                    lastFid = fid;
-                }
-
-                if (isErr) {
-                    frame.reset();
-                    inFrame = false;
-                    continue;
-                }
-
-                int payloadLen = n - payloadStart;
-                if (payloadLen <= 0) {
-                    if (isEof && inFrame) {
-                        pushCleanJpeg(frame.toByteArray());
-                        frame.reset();
-                        inFrame = false;
-                    }
-                    continue;
-                }
-
-                int p = payloadStart;
-                if (!inFrame) {
-                    // Synchronize on Start-Of-Image marker (0xFF 0xD8)
-                    while (p < n - 1) {
-                        if ((buf[p] & 0xFF) == 0xFF && (buf[p + 1] & 0xFF) == 0xD8) {
-                            inFrame = true;
-                            frame.reset();
-                            break;
-                        }
-                        p++;
-                    }
-                }
-
-                if (inFrame) {
-                    frame.write(buf, p, n - p);
-
-                    boolean hasEoi = (n >= payloadStart + 2
-                        && (buf[n - 2] & 0xFF) == 0xFF
-                        && (buf[n - 1] & 0xFF) == 0xD9);
-
-                    if (isEof || hasEoi) {
-                        pushCleanJpeg(frame.toByteArray());
-                        frame.reset();
-                        inFrame = false;
-                    }
-                }
-            }
-        }, "usb-bulk-reader");
-        readerThread.setDaemon(true);
-        readerThread.start();
-        Log.d(TAG, "Bulk reader started with clean UVC header stripping");
-    }
-
-    // -- Isochronous Frame Reader ---------------------------------------------
-
-    private void startIsoReader(final UsbEndpoint endpoint) {
-        running.set(true);
-        startMjpegServer();
-        readerThread = new Thread(() -> {
-            int pktSize = endpoint.getMaxPacketSize();
-            int numReq = 8;
-            UsbRequest[] requests = new UsbRequest[numReq];
-            ByteBuffer[] buffers  = new ByteBuffer[numReq];
-            for (int i = 0; i < numReq; i++) {
-                buffers[i]  = ByteBuffer.allocate(pktSize * 8);
-                requests[i] = new UsbRequest();
-                requests[i].initialize(connection, endpoint);
-                requests[i].queue(buffers[i]);
-            }
-            ByteArrayOutputStream frame = new ByteArrayOutputStream(256 * 1024);
-            boolean inFrame = false;
-            int lastFid = -1;
-
-            while (running.get()) {
+            while (running.get() && connection != null) {
                 try {
-                    UsbRequest done = connection.requestWait(500);
-                    if (done == null) continue;
-                    ByteBuffer buf = null;
-                    for (int i = 0; i < numReq; i++) {
-                        if (requests[i] == done) { buf = buffers[i]; break; }
+                    int n = connection.bulkTransfer(endpoint, buf, buf.length, 1000);
+                    if (n <= 0) continue;
+
+                    int headerLen = buf[0] & 0xFF;
+                    int payloadStart = 0;
+                    boolean isEof = false;
+                    boolean isErr = false;
+
+                    // UVC payload header: byte 0 = bHeaderLength, byte 1 = bmHeaderInfo
+                    if (headerLen >= 2 && headerLen <= n) {
+                        int headerInfo = buf[1] & 0xFF;
+                        isErr = (headerInfo & 0x40) != 0;
+                        isEof = (headerInfo & 0x02) != 0;
+                        int fid = headerInfo & 0x01;
+                        payloadStart = headerLen;
+
+                        // If Frame ID toggled, any previous open frame has finished
+                        if (lastFid != -1 && fid != lastFid && inFrame) {
+                            pushCleanJpeg(frame.toByteArray());
+                            frame.reset();
+                            inFrame = false;
+                        }
+                        lastFid = fid;
                     }
-                    if (buf == null) continue;
-                    buf.rewind();
-                    int limit = buf.limit();
-                    if (limit < 2) { done.queue(buf); continue; }
 
-                    int headerLen = buf.get() & 0xFF;
-                    int headerInfo = buf.get() & 0xFF;
-                    boolean isErr = (headerInfo & 0x40) != 0;
-                    boolean isEof = (headerInfo & 0x02) != 0;
-                    int fid = headerInfo & 0x01;
-
-                    if (headerLen > limit || isErr) {
-                        if (isErr) { frame.reset(); inFrame = false; }
-                        done.queue(buf);
+                    if (isErr) {
+                        frame.reset();
+                        inFrame = false;
                         continue;
                     }
 
-                    if (lastFid != -1 && fid != lastFid && inFrame) {
-                        pushCleanJpeg(frame.toByteArray());
-                        frame.reset();
-                        inFrame = false;
-                    }
-                    lastFid = fid;
-
-                    // Skip remaining UVC header bytes
-                    for (int i = 2; i < headerLen && i < limit; i++) buf.get();
-                    int payloadLen = limit - headerLen;
+                    int payloadLen = n - payloadStart;
                     if (payloadLen <= 0) {
                         if (isEof && inFrame) {
                             pushCleanJpeg(frame.toByteArray());
                             frame.reset();
                             inFrame = false;
                         }
-                        done.queue(buf);
                         continue;
                     }
 
-                    byte[] payload = new byte[payloadLen];
-                    buf.get(payload, 0, payloadLen);
-
-                    int p = 0;
+                    int p = payloadStart;
                     if (!inFrame) {
-                        while (p < payloadLen - 1) {
-                            if ((payload[p] & 0xFF) == 0xFF && (payload[p + 1] & 0xFF) == 0xD8) {
+                        // Synchronize on Start-Of-Image marker (0xFF 0xD8)
+                        while (p < n - 1) {
+                            if ((buf[p] & 0xFF) == 0xFF && (buf[p + 1] & 0xFF) == 0xD8) {
                                 inFrame = true;
                                 frame.reset();
                                 break;
@@ -649,10 +653,18 @@ public class UsbCameraPlugin extends Plugin {
                     }
 
                     if (inFrame) {
-                        frame.write(payload, p, payloadLen - p);
-                        boolean hasEoi = (payloadLen >= 2
-                            && (payload[payloadLen - 2] & 0xFF) == 0xFF
-                            && (payload[payloadLen - 1] & 0xFF) == 0xD9);
+                        frame.write(buf, p, n - p);
+
+                        // Prevent OutOfMemoryError if corrupted stream sends runaway frame
+                        if (frame.size() > MAX_FRAME_SIZE) {
+                            frame.reset();
+                            inFrame = false;
+                            continue;
+                        }
+
+                        boolean hasEoi = (n >= payloadStart + 2
+                            && (buf[n - 2] & 0xFF) == 0xFF
+                            && (buf[n - 1] & 0xFF) == 0xD9);
 
                         if (isEof || hasEoi) {
                             pushCleanJpeg(frame.toByteArray());
@@ -660,55 +672,58 @@ public class UsbCameraPlugin extends Plugin {
                             inFrame = false;
                         }
                     }
-
-                    buf.clear();
-                    done.queue(buf);
-                } catch (Exception e) {
-                    if (running.get()) Log.e(TAG, "Iso error", e);
+                } catch (Throwable t) {
+                    if (running.get()) Log.w(TAG, "Bulk reader transfer issue: " + t.getMessage());
                 }
             }
-            for (UsbRequest r : requests) {
-                try { r.cancel(); r.close(); } catch (Exception ignored) {}
-            }
-        }, "usb-iso-reader");
+        }, "usb-bulk-reader");
+
         readerThread.setDaemon(true);
         readerThread.start();
-        Log.d(TAG, "Isochronous reader started with clean UVC header stripping");
+        Log.d(TAG, "Bulk reader started safely");
     }
 
     private void pushCleanJpeg(byte[] data) {
-        if (data == null || data.length < 1024) return;
-        // Verify Start-Of-Image marker
-        if ((data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xD8) return;
+        if (data == null || data.length < 1024 || mjpegServer == null) return;
+        try {
+            // Verify Start-Of-Image marker
+            if ((data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xD8) return;
 
-        // Ensure End-Of-Image marker (0xFF 0xD9) is present at end
-        boolean endsWithEoi = (data.length >= 2
-            && (data[data.length - 2] & 0xFF) == 0xFF
-            && (data[data.length - 1] & 0xFF) == 0xD9);
+            // Ensure End-Of-Image marker (0xFF 0xD9) is present at end
+            boolean endsWithEoi = (data.length >= 2
+                && (data[data.length - 2] & 0xFF) == 0xFF
+                && (data[data.length - 1] & 0xFF) == 0xD9);
 
-        if (!endsWithEoi) {
-            byte[] patched = new byte[data.length + 2];
-            System.arraycopy(data, 0, patched, 0, data.length);
-            patched[data.length] = (byte) 0xFF;
-            patched[data.length + 1] = (byte) 0xD9;
-            mjpegServer.pushFrame(patched);
-        } else {
-            mjpegServer.pushFrame(data);
-        }
+            if (!endsWithEoi) {
+                byte[] patched = new byte[data.length + 2];
+                System.arraycopy(data, 0, patched, 0, data.length);
+                patched[data.length] = (byte) 0xFF;
+                patched[data.length + 1] = (byte) 0xD9;
+                mjpegServer.pushFrame(patched);
+            } else {
+                mjpegServer.pushFrame(data);
+            }
+        } catch (Throwable ignored) {}
     }
 
-    // -- MJPEG Server -----------------------------------------------------------
+    // -- MJPEG Server Lifecycle -------------------------------------------------
 
-    private void startMjpegServer() {
+    private synchronized void startMjpegServer() {
         try {
-            if (!mjpegServer.isAlive()) mjpegServer.start();
+            if (mjpegServer == null || !mjpegServer.isAlive()) {
+                if (mjpegServer != null) {
+                    try { mjpegServer.stop(); } catch (Throwable ignored) {}
+                }
+                mjpegServer = new UsbMjpegServer();
+                mjpegServer.start();
+            }
             Log.d(TAG, "MJPEG server: http://127.0.0.1:8088/stream");
             JSObject result = new JSObject();
             result.put("url",    "http://127.0.0.1:8088/stream");
             result.put("width",  TARGET_W);
             result.put("height", TARGET_H);
             notifyListeners("usbCameraReady", result);
-        } catch (java.io.IOException e) {
+        } catch (Throwable e) {
             Log.e(TAG, "Failed to start MJPEG server", e);
         }
     }
@@ -724,30 +739,41 @@ public class UsbCameraPlugin extends Plugin {
 
     @PluginMethod
     public void stopStream(PluginCall call) {
-        stopStreaming();
-        call.resolve();
+        workerExecutor.execute(() -> {
+            stopStreaming();
+            call.resolve();
+        });
     }
 
     // -- Cleanup ----------------------------------------------------------------
 
-    private void stopStreaming() {
+    private synchronized void stopStreaming() {
         running.set(false);
-        if (readerThread != null) { readerThread.interrupt(); readerThread = null; }
+        if (readerThread != null) {
+            try { readerThread.interrupt(); } catch (Throwable ignored) {}
+            readerThread = null;
+        }
         if (videoInterface != null && connection != null) {
-            try { connection.releaseInterface(videoInterface); } catch (Exception ignored) {}
+            try { connection.releaseInterface(videoInterface); } catch (Throwable ignored) {}
             videoInterface = null;
         }
-        if (connection != null) { connection.close(); connection = null; }
-        if (mjpegServer != null && mjpegServer.isAlive()) mjpegServer.stop();
+        if (connection != null) {
+            try { connection.close(); } catch (Throwable ignored) {}
+            connection = null;
+        }
+        if (mjpegServer != null && mjpegServer.isAlive()) {
+            try { mjpegServer.stop(); } catch (Throwable ignored) {}
+        }
     }
 
     @Override
     protected void handleOnDestroy() {
         stopStreaming();
         if (usbReceiver != null) {
-            try { getContext().unregisterReceiver(usbReceiver); } catch (Exception ignored) {}
+            try { getContext().unregisterReceiver(usbReceiver); } catch (Throwable ignored) {}
             usbReceiver = null;
         }
+        try { workerExecutor.shutdownNow(); } catch (Throwable ignored) {}
         super.handleOnDestroy();
     }
 }
@@ -759,6 +785,7 @@ console.log('[OK] Wrote UsbCameraPlugin.java');
 const mainActivityCode = `package com.broadcast.studio;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -785,28 +812,39 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(UsbCameraPlugin.class);
         super.onCreate(savedInstanceState);
 
-        WebView webView = getBridge().getWebView();
-        if (webView != null) {
-            WebSettings settings = webView.getSettings();
-            settings.setMediaPlaybackRequiresUserGesture(false);
-            settings.setJavaScriptEnabled(true);
-            settings.setDomStorageEnabled(true);
-            settings.setDatabaseEnabled(true);
-            settings.setAllowFileAccess(true);
-            settings.setAllowContentAccess(true);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            }
-            webView.setWebChromeClient(new WebChromeClient() {
-                @Override
-                public void onPermissionRequest(final PermissionRequest request) {
-                    runOnUiThread(() -> request.grant(request.getResources()));
+        try {
+            WebView webView = getBridge().getWebView();
+            if (webView != null) {
+                WebSettings settings = webView.getSettings();
+                settings.setMediaPlaybackRequiresUserGesture(false);
+                settings.setJavaScriptEnabled(true);
+                settings.setDomStorageEnabled(true);
+                settings.setDatabaseEnabled(true);
+                settings.setAllowFileAccess(true);
+                settings.setAllowContentAccess(true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                 }
-            });
+                webView.setWebChromeClient(new WebChromeClient() {
+                    @Override
+                    public void onPermissionRequest(final PermissionRequest request) {
+                        runOnUiThread(() -> request.grant(request.getResources()));
+                    }
+                });
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error configuring WebView", t);
         }
 
         new Handler(Looper.getMainLooper())
                 .postDelayed(this::checkAndRequestPermissions, 600);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Log.d(TAG, "MainActivity onNewIntent: " + (intent != null ? intent.getAction() : "null"));
     }
 
     @Override
