@@ -3063,30 +3063,38 @@
             if (!micSelect || !window.availableAudioDevices || window.availableAudioDevices.length === 0) return;
 
             const targetCamId = cameraId || document.getElementById('camera-select')?.value;
-            const selectedCam = (window.availableVideoDevices || []).find(d => d.deviceId === targetCamId);
-            if (!selectedCam) return;
-
             let matchedMic = null;
 
-            // 1. Hardware Group ID Match (same physical USB device or built-in webcam assembly)
-            if (selectedCam.groupId) {
-                matchedMic = window.availableAudioDevices.find(a => a.groupId && a.groupId === selectedCam.groupId);
+            // Handle USB Capture Card specifically
+            if (targetCamId === '__usb_mjpeg__' || /usb|capture|cam link|uvc|hdmi/i.test(targetCamId || '')) {
+                matchedMic = (window.availableAudioDevices || []).find(a => /usb|capture|cam link|uvc|hdmi|line|external/i.test(a.label || ''));
+                if (window.Capacitor?.Plugins?.UsbCamera?.routeUsbAudio) {
+                    window.Capacitor.Plugins.UsbCamera.routeUsbAudio().catch(() => {});
+                }
             }
 
-            // 2. Fuzzy Label / Model Token Match Fallback (e.g., "C920", "BRIO", "Cam Link", "OBS")
-            if (!matchedMic && selectedCam.label) {
-                const cleanCamName = selectedCam.label.toLowerCase()
-                    .replace(/\b(front|back|rear|camera|video|webcam|integrated|default|usb)\b/gi, '')
-                    .replace(/[\(\)\[\]:_\-]/g, ' ')
-                    .trim();
+            const selectedCam = (window.availableVideoDevices || []).find(d => d.deviceId === targetCamId);
+            if (!matchedMic && selectedCam) {
+                // 1. Hardware Group ID Match (same physical USB device or built-in webcam assembly)
+                if (selectedCam.groupId) {
+                    matchedMic = window.availableAudioDevices.find(a => a.groupId && a.groupId === selectedCam.groupId);
+                }
 
-                const camTokens = cleanCamName.split(/\s+/).filter(t => t.length >= 3);
+                // 2. Fuzzy Label / Model Token Match Fallback (e.g., "C920", "BRIO", "Cam Link", "OBS")
+                if (!matchedMic && selectedCam.label) {
+                    const cleanCamName = selectedCam.label.toLowerCase()
+                        .replace(/\b(front|back|rear|camera|video|webcam|integrated|default|usb)\b/gi, '')
+                        .replace(/[\(\)\[\]:_\-]/g, ' ')
+                        .trim();
 
-                if (camTokens.length > 0) {
-                    matchedMic = window.availableAudioDevices.find(a => {
-                        const micName = (a.label || '').toLowerCase();
-                        return camTokens.some(token => micName.includes(token));
-                    });
+                    const camTokens = cleanCamName.split(/\s+/).filter(t => t.length >= 3);
+
+                    if (camTokens.length > 0) {
+                        matchedMic = window.availableAudioDevices.find(a => {
+                            const micName = (a.label || '').toLowerCase();
+                            return camTokens.some(token => micName.includes(token));
+                        });
+                    }
                 }
             }
 
@@ -3700,7 +3708,9 @@
                 pool.appendChild(canvas);
                 const ctx = canvas.getContext('2d');
 
-                const renderFrame = () => {
+                let isRunning = true;
+                const renderLoop = () => {
+                    if (!isRunning) return;
                     if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
@@ -3708,18 +3718,42 @@
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     }
+                    requestAnimationFrame(renderLoop);
                 };
-                img.onload = renderFrame;
-                setInterval(renderFrame, 16);
+                img.onload = () => {
+                    if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                    }
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                };
+                requestAnimationFrame(renderLoop);
 
                 const fakeStream = canvas.captureStream(60);
-                fakeStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+                fakeStream.getVideoTracks().forEach(t => {
+                    t.contentHint = 'motion';
+                    const origStop = t.stop.bind(t);
+                    t.stop = () => {
+                        isRunning = false;
+                        origStop();
+                    };
+                });
 
-                // Attach microphone audio track if mic is selected
+                // Request native Android to route HDMI audio to USB input device
+                if (window.Capacitor?.Plugins?.UsbCamera?.routeUsbAudio) {
+                    window.Capacitor.Plugins.UsbCamera.routeUsbAudio().catch(() => {});
+                }
+
+                // Attach microphone audio track if mic is selected (disable echoCancellation/noiseSuppression for pure HDMI line audio)
                 if (audioDeviceId && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                     try {
                         const aStream = await navigator.mediaDevices.getUserMedia({
-                            audio: { deviceId: { exact: audioDeviceId } },
+                            audio: {
+                                deviceId: { exact: audioDeviceId },
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                autoGainControl: false
+                            },
                             video: false
                         });
                         aStream.getAudioTracks().forEach(t => fakeStream.addTrack(t));
@@ -9093,10 +9127,16 @@
                 }
                 const ctx = canvas.getContext('2d');
 
+                if (window._usbModalPreviewAnimId) {
+                    cancelAnimationFrame(window._usbModalPreviewAnimId);
+                    window._usbModalPreviewAnimId = null;
+                }
                 if (window._usbModalPreviewInterval) {
                     clearInterval(window._usbModalPreviewInterval);
+                    window._usbModalPreviewInterval = null;
                 }
-                window._usbModalPreviewInterval = setInterval(() => {
+
+                const renderLoop = () => {
                     if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
@@ -9104,7 +9144,16 @@
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     }
-                }, 16);
+                    window._usbModalPreviewAnimId = requestAnimationFrame(renderLoop);
+                };
+                img.onload = () => {
+                    if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                    }
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                };
+                window._usbModalPreviewAnimId = requestAnimationFrame(renderLoop);
 
                 try {
                     _camModalPreviewStream = canvas.captureStream(60);
@@ -9120,11 +9169,21 @@
                     console.warn("[CameraModal] canvas.captureStream error:", e);
                 }
 
-                // Microphone Audio Level Meter (Audio Only)
+                // Request native Android to route HDMI audio to USB input device
+                if (window.Capacitor?.Plugins?.UsbCamera?.routeUsbAudio) {
+                    window.Capacitor.Plugins.UsbCamera.routeUsbAudio().catch(() => {});
+                }
+
+                // Microphone Audio Level Meter (Audio Only) - disable DSP for pure HDMI line audio
                 if (audioDeviceId && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                     try {
                         _camModalMicStream = await navigator.mediaDevices.getUserMedia({
-                            audio: { deviceId: { exact: audioDeviceId } },
+                            audio: {
+                                deviceId: { exact: audioDeviceId },
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                autoGainControl: false
+                            },
                             video: false
                         });
 
@@ -9256,6 +9315,10 @@
         };
 
         window.stopCameraModalPreview = function () {
+            if (window._usbModalPreviewAnimId) {
+                cancelAnimationFrame(window._usbModalPreviewAnimId);
+                window._usbModalPreviewAnimId = null;
+            }
             if (window._usbModalPreviewInterval) {
                 clearInterval(window._usbModalPreviewInterval);
                 window._usbModalPreviewInterval = null;

@@ -534,6 +534,10 @@
             window.usbMjpegStreamUrl = data.url || 'http://127.0.0.1:8088/stream';
             // Refresh any camera picker that is currently visible
             ensureUsbOptionInSelects();
+            // Automatically route native audio to USB input device
+            if (typeof UsbCamera.routeUsbAudio === 'function') {
+                UsbCamera.routeUsbAudio().catch(() => {});
+            }
             // Fire a custom DOM event so pages can react immediately
             document.dispatchEvent(new CustomEvent('usbCameraReady', { detail: data }));
         });
@@ -550,11 +554,19 @@
             console.warn('[USB] Error:', data.message);
         });
 
+        // Prompt capture / check connection immediately on startup so controller page works without guest page
+        if (typeof UsbCamera.startCapture === 'function') {
+            UsbCamera.startCapture().catch(() => {});
+        }
+
         // Ask plugin if a card is already connected (e.g. app re-opened)
         UsbCamera.isConnected().then(result => {
             if (result && result.connected) {
                 window.usbMjpegStreamUrl = 'http://127.0.0.1:8088/stream';
                 ensureUsbOptionInSelects();
+                if (typeof UsbCamera.routeUsbAudio === 'function') {
+                    UsbCamera.routeUsbAudio().catch(() => {});
+                }
             }
         }).catch(() => {});
     }

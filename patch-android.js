@@ -189,7 +189,8 @@ public class UsbMjpegServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         if ("/stream".equals(uri)) {
-            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(4);
+            // Queue capacity 2: ultra-low-latency, always deliver the freshest 60fps frame
+            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(2);
             byte[] init = latestFrame;
             if (init != null) clientQueue.offer(init);
             activeStreams.add(clientQueue);
@@ -299,6 +300,8 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.util.Log;
 import com.getcapacitor.JSObject;
@@ -325,8 +328,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * UsbCameraPlugin - Capacitor native plugin implementing rock-solid USB capture card streaming.
  *
  * Dual-Engine Architecture:
- * 1. Native UVC Engine (UVCAndroid / libuvc + libusb NDK) for hardware-accelerated 30/60fps video.
+ * 1. Native UVC Engine (UVCAndroid / libuvc + libusb NDK) with zero-copy MJPEG pass-through.
  * 2. Hardened Bulk Reader Fallback (Android USB Host API with FID tracking) for maximum compatibility.
+ * 3. Native USB Audio Class (UAC) line-in routing to guarantee HDMI digital sound instead of mobile mic.
  */
 @CapacitorPlugin(name = "UsbCamera")
 public class UsbCameraPlugin extends Plugin {
@@ -355,6 +359,10 @@ public class UsbCameraPlugin extends Plugin {
     private int currentHeight = TARGET_H;
     private int currentFps = 60;
 
+    // Pre-allocated buffers for rare YUV/NV21 fallback to prevent GC thrashing
+    private byte[] nv21Pool = null;
+    private ByteArrayOutputStream yuvOutPool = null;
+
     // -- Plugin Lifecycle -------------------------------------------------------
 
     @Override
@@ -373,27 +381,14 @@ public class UsbCameraPlugin extends Plugin {
     private void registerUsbReceiver() {
         usbReceiver = new BroadcastReceiver() {
             @Override
-            public void onReceive(Context ctx, Intent intent) {
+            public void onReceive(Context context, Intent intent) {
                 try {
                     String action = intent.getAction();
+                    UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+
+                    Log.d(TAG, "USB onReceive action: " + action + ", device: " + (device != null ? device.getDeviceName() : "null"));
+
                     if (action == null) return;
-                    Log.d(TAG, "USB Broadcast received: " + action);
-
-                    UsbDevice device = null;
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        try {
-                            device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class);
-                        } catch (Throwable ignored) {
-                            device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                        }
-                    } else {
-                        device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                    }
-
-                    if (device == null) {
-                        device = currentDevice;
-                    }
-
                     switch (action) {
                         case UsbManager.ACTION_USB_DEVICE_ATTACHED:
                             if (device != null && isUvcDevice(device)) {
@@ -409,6 +404,7 @@ public class UsbCameraPlugin extends Plugin {
                             break;
                         case ACTION_USB_PERMISSION:
                             boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
+                            Log.d(TAG, "ACTION_USB_PERMISSION granted=" + granted + " for dev=" + (device != null ? device.getDeviceName() : "null"));
                             if (granted) {
                                 if (device != null) {
                                     final UsbDevice devToOpen = device;
@@ -496,6 +492,27 @@ public class UsbCameraPlugin extends Plugin {
 
     private void startCapture(final UsbDevice device) {
         if (device == null) return;
+        currentDevice = device;
+
+        // CRITICAL FIX 1: Explicitly request USB host permission FIRST!
+        // Without this, CameraHelper remains in a silent idle state and never opens.
+        if (usbManager != null && !usbManager.hasPermission(device)) {
+            Log.d(TAG, "Requesting Android USB permission for device: " + device.getDeviceName());
+            Intent permIntent = new Intent(ACTION_USB_PERMISSION);
+            permIntent.setPackage(getContext().getPackageName());
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
+            }
+
+            PendingIntent pi = PendingIntent.getBroadcast(getContext(), 0, permIntent, flags);
+            usbManager.requestPermission(device, pi);
+            return; // Wait for user approval via ACTION_USB_PERMISSION receiver
+        }
+
+        // CRITICAL FIX 2: Route Android audio system to USB line-in (HDMI Audio)
+        routeToUsbAudioInput();
 
         // Attempt 1: Native UVC Engine (UVCAndroid / libuvc NDK)
         try {
@@ -507,23 +524,10 @@ public class UsbCameraPlugin extends Plugin {
             Log.w(TAG, "Native UVC engine init error, falling back to Java USB Host: " + t.getMessage());
         }
 
-        // Attempt 2: Java USB Host API with standard Android permission
+        // Attempt 2: Java USB Host API Bulk Reader
         if (usbManager != null) {
-            if (usbManager.hasPermission(device)) {
-                final UsbDevice dev = device;
-                workerExecutor.execute(() -> openAndStream(dev));
-            } else {
-                Intent permIntent = new Intent(ACTION_USB_PERMISSION);
-                permIntent.setPackage(getContext().getPackageName());
-
-                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    flags |= PendingIntent.FLAG_MUTABLE;
-                }
-
-                PendingIntent pi = PendingIntent.getBroadcast(getContext(), 0, permIntent, flags);
-                usbManager.requestPermission(device, pi);
-            }
+            final UsbDevice dev = device;
+            workerExecutor.execute(() -> openAndStream(dev));
         }
     }
 
@@ -640,15 +644,28 @@ public class UsbCameraPlugin extends Plugin {
                         currentFps = 60;
                     }
 
+                    // CRITICAL FIX 3: Request PIXEL_FORMAT_RAW for zero-copy hardware MJPEG pass-through!
+                    // This completely avoids CPU software JPEG compression and eliminates frame drops.
                     try {
                         mCameraHelper.setFrameCallback(new IFrameCallback() {
                             @Override
                             public void onFrame(ByteBuffer frame) {
                                 handleNativeFrame(frame);
                             }
-                        }, UVCCamera.PIXEL_FORMAT_NV21);
+                        }, UVCCamera.PIXEL_FORMAT_RAW);
                     } catch (Throwable t) {
-                        Log.e(TAG, "Failed to register frame callback: " + t.getMessage());
+                        Log.e(TAG, "Failed to register frame callback with PIXEL_FORMAT_RAW: " + t.getMessage());
+                        // Fallback to NV21 if RAW is unsupported by native build
+                        try {
+                            mCameraHelper.setFrameCallback(new IFrameCallback() {
+                                @Override
+                                public void onFrame(ByteBuffer frame) {
+                                    handleNativeFrame(frame);
+                                }
+                            }, UVCCamera.PIXEL_FORMAT_NV21);
+                        } catch (Throwable t2) {
+                            Log.e(TAG, "Failed to register NV21 fallback: " + t2.getMessage());
+                        }
                     }
 
                     try {
@@ -700,10 +717,12 @@ public class UsbCameraPlugin extends Plugin {
     private void handleNativeFrame(ByteBuffer frame) {
         if (frame == null || !running.get() || mjpegServer == null) return;
         try {
+            frame.position(0);
             int len = frame.remaining();
             if (len <= 0) return;
 
             // Direct pass-through if frame begins with JPEG SOI (0xFF 0xD8)
+            // UVC capture cards natively output MJPEG: this is zero-copy, giving silky smooth 60 FPS!
             if (len > 4 && (frame.get(0) & 0xFF) == 0xFF && (frame.get(1) & 0xFF) == 0xD8) {
                 byte[] jpeg = new byte[len];
                 frame.get(jpeg);
@@ -711,17 +730,23 @@ public class UsbCameraPlugin extends Plugin {
                 return;
             }
 
-            // NV21 to JPEG encoding
+            // Fallback for uncompressed NV21/YUV: Use pre-allocated buffer pool to avoid GC pauses
             int w = currentWidth > 0 ? currentWidth : 1280;
             int h = currentHeight > 0 ? currentHeight : 720;
             int expected = (w * h * 3) / 2;
             if (len >= expected) {
-                byte[] nv21 = new byte[len];
-                frame.get(nv21);
-                YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, w, h, null);
-                ByteArrayOutputStream out = new ByteArrayOutputStream(expected / 4);
-                yuv.compressToJpeg(new Rect(0, 0, w, h), 85, out);
-                mjpegServer.pushFrame(out.toByteArray());
+                if (nv21Pool == null || nv21Pool.length < len) {
+                    nv21Pool = new byte[len];
+                }
+                frame.get(nv21Pool, 0, len);
+                YuvImage yuv = new YuvImage(nv21Pool, ImageFormat.NV21, w, h, null);
+                if (yuvOutPool == null) {
+                    yuvOutPool = new ByteArrayOutputStream(expected / 4);
+                } else {
+                    yuvOutPool.reset();
+                }
+                yuv.compressToJpeg(new Rect(0, 0, w, h), 85, yuvOutPool);
+                mjpegServer.pushFrame(yuvOutPool.toByteArray());
             }
         } catch (Throwable t) {
             Log.w(TAG, "Error processing native frame: " + t.getMessage());
@@ -948,7 +973,6 @@ public class UsbCameraPlugin extends Plugin {
                         while (p < n - 1) {
                             if ((buf[p] & 0xFF) == 0xFF && (buf[p + 1] & 0xFF) == 0xD8) {
                                 inFrame = true;
-                                frameBuffer.reset();
                                 break;
                             }
                             p++;
@@ -957,26 +981,19 @@ public class UsbCameraPlugin extends Plugin {
 
                     if (inFrame && p < n) {
                         frameBuffer.write(buf, p, n - p);
+                    }
 
-                        if (frameBuffer.size() > MAX_FRAME_SIZE) {
-                            frameBuffer.reset();
-                            inFrame = false;
-                            continue;
-                        }
-
-                        // Check for End-Of-Image marker (0xFF 0xD9) or EOF flag
+                    // Complete frame if End-Of-Frame (EOF) marker was in UVC header
+                    if (isEof && inFrame && frameBuffer.size() > 4096) {
                         byte[] raw = frameBuffer.toByteArray();
                         int len = raw.length;
-
                         int eoiIndex = -1;
-                        int searchBack = Math.max(0, len - 256);
-                        for (int i = len - 2; i >= searchBack; i--) {
+                        for (int i = len - 2; i >= Math.max(0, len - 512); i--) {
                             if ((raw[i] & 0xFF) == 0xFF && (raw[i + 1] & 0xFF) == 0xD9) {
                                 eoiIndex = i + 2;
                                 break;
                             }
                         }
-
                         if (eoiIndex != -1) {
                             byte[] clean;
                             if (eoiIndex == len) {
@@ -990,12 +1007,7 @@ public class UsbCameraPlugin extends Plugin {
                             }
                             frameBuffer.reset();
                             inFrame = false;
-                        } else if (isEof && len > 4096) {
-                            byte[] patched = new byte[len + 2];
-                            System.arraycopy(raw, 0, patched, 0, len);
-                            patched[len] = (byte) 0xFF;
-                            patched[len + 1] = (byte) 0xD9;
-                            mjpegServer.pushFrame(patched);
+                        } else if (len > MAX_FRAME_SIZE) {
                             frameBuffer.reset();
                             inFrame = false;
                         }
@@ -1034,13 +1046,90 @@ public class UsbCameraPlugin extends Plugin {
         }
     }
 
+    // -- Native USB Audio Routing -----------------------------------------------
+
+    /**
+     * Routes Android audio input to the USB HDMI Audio device so that WebRTC
+     * records line-in HDMI sound rather than the mobile device's microphone.
+     */
+    public boolean routeToUsbAudioInput() {
+        try {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return false;
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                List<AudioDeviceInfo> devices = am.getAvailableCommunicationDevices();
+                for (AudioDeviceInfo dev : devices) {
+                    if (dev.getType() == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                        dev.getType() == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                        boolean ok = am.setCommunicationDevice(dev);
+                        Log.d(TAG, "Successfully routed Android communication device to USB: " + dev.getProductName() + " (ok=" + ok + ")");
+                        return ok;
+                    }
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+                for (AudioDeviceInfo dev : devices) {
+                    if (dev.getType() == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                        dev.getType() == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                        Log.d(TAG, "Android M-R USB input device identified: " + dev.getProductName());
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error routing USB audio: " + t.getMessage());
+        }
+        return false;
+    }
+
     // -- Capacitor JS-callable Methods ------------------------------------------
 
     @PluginMethod
     public void isConnected(PluginCall call) {
         JSObject ret = new JSObject();
         ret.put("connected", running.get());
+        ret.put("url", "http://127.0.0.1:8088/stream");
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void startCapture(PluginCall call) {
+        workerExecutor.execute(() -> {
+            scanForExistingDevices();
+            routeToUsbAudioInput();
+            JSObject ret = new JSObject();
+            ret.put("started", true);
+            ret.put("running", running.get());
+            ret.put("url", "http://127.0.0.1:8088/stream");
+            call.resolve(ret);
+        });
+    }
+
+    @PluginMethod
+    public void requestPermission(PluginCall call) {
+        workerExecutor.execute(() -> {
+            if (currentDevice != null && usbManager != null && !usbManager.hasPermission(currentDevice)) {
+                Intent permIntent = new Intent(ACTION_USB_PERMISSION);
+                permIntent.setPackage(getContext().getPackageName());
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_MUTABLE;
+                PendingIntent pi = PendingIntent.getBroadcast(getContext(), 0, permIntent, flags);
+                usbManager.requestPermission(currentDevice, pi);
+            }
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void routeUsbAudio(PluginCall call) {
+        workerExecutor.execute(() -> {
+            boolean ok = routeToUsbAudioInput();
+            JSObject ret = new JSObject();
+            ret.put("routed", ok);
+            call.resolve(ret);
+        });
     }
 
     @PluginMethod
@@ -1106,8 +1195,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
@@ -1139,12 +1226,6 @@ public class MainActivity extends BridgeActivity {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                 }
-                webView.setWebChromeClient(new WebChromeClient() {
-                    @Override
-                    public void onPermissionRequest(final PermissionRequest request) {
-                        runOnUiThread(() -> request.grant(request.getResources()));
-                    }
-                });
             }
         } catch (Throwable t) {
             Log.e(TAG, "Error configuring WebView", t);

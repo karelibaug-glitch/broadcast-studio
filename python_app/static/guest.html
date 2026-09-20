@@ -1327,9 +1327,16 @@
                     canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
                     document.body.appendChild(canvas);
                 }
-                const ctx = canvas.getContext('2d');
+                if (window._usbGuestPreviewAnimId) {
+                    cancelAnimationFrame(window._usbGuestPreviewAnimId);
+                    window._usbGuestPreviewAnimId = null;
+                }
+                if (window._usbGuestPreviewInterval) {
+                    clearInterval(window._usbGuestPreviewInterval);
+                    window._usbGuestPreviewInterval = null;
+                }
 
-                const renderFrame = () => {
+                const renderLoop = () => {
                     if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
@@ -1337,12 +1344,42 @@
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     }
+                    window._usbGuestPreviewAnimId = requestAnimationFrame(renderLoop);
                 };
-                img.onload = renderFrame;
-                setInterval(renderFrame, 16);
+                img.onload = () => {
+                    if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                    }
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                };
+                window._usbGuestPreviewAnimId = requestAnimationFrame(renderLoop);
 
                 activeStream = canvas.captureStream(60);
                 activeStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+
+                // Request native Android to route HDMI audio to USB input device
+                if (window.Capacitor?.Plugins?.UsbCamera?.routeUsbAudio) {
+                    window.Capacitor.Plugins.UsbCamera.routeUsbAudio().catch(() => {});
+                }
+
+                // Attach microphone audio track if mic is selected (disable echoCancellation/noiseSuppression for pure HDMI line audio)
+                if (micId && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    try {
+                        const aStream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                deviceId: { exact: micId },
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                autoGainControl: false
+                            },
+                            video: false
+                        });
+                        aStream.getAudioTracks().forEach(t => activeStream.addTrack(t));
+                    } catch (e) {
+                        console.warn("[guest.html] Audio attach warning for USB stream:", e);
+                    }
+                }
 
                 videoEl.srcObject = activeStream;
                 videoEl.muted = true;
