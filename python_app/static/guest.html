@@ -1329,29 +1329,26 @@
                 }
                 const ctx = canvas.getContext('2d');
 
-                img.onload = () => {
-                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                const renderFrame = () => {
+                    if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
-                        ctx.drawImage(img, 0, 0);
-                    }
-                };
-                setInterval(() => {
-                    if (img.complete && img.naturalWidth > 0) {
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     }
-                }, 33);
+                };
+                img.onload = renderFrame;
+                setInterval(renderFrame, 16);
 
-                activeStream = canvas.captureStream(30);
+                activeStream = canvas.captureStream(60);
                 activeStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
 
                 videoEl.srcObject = activeStream;
                 videoEl.muted = true;
                 await videoEl.play().catch(e => console.warn(e));
 
-                document.getElementById('telemetry-res').innerText = '1920x1080 30fps (USB)';
+                document.getElementById('telemetry-res').innerText = '1920x1080 60fps (USB)';
                 startAudioVUMeter();
 
                 if (!updateActiveStreamOnExistingCall(activeStream)) {

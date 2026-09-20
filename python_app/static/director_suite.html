@@ -4677,6 +4677,7 @@
             const selectedOpt = document.querySelector(`#camera-select option[value="${camSel}"]`);
             const optLabel = selectedOpt ? selectedOpt.text : '';
             const isUsbCapture = camSel === '__usb_mjpeg__' || 
+                /usb|capture|cam link|uvc|hdmi|external|video grabber|🔌/i.test(optLabel + ' ' + camSel) ||
                 (window.usbMjpegStreamUrl && /usb|capture|cam link|uvc|hdmi|external|video grabber/i.test(optLabel + ' ' + camSel));
 
             // Native USB Capture Card path (CameraFi-style MJPEG)
@@ -4698,26 +4699,29 @@
 
                 const ctx = canvas.getContext('2d');
                 let frameDrawn = false;
-                img.onload = () => {
+                const renderFrame = () => {
                     try {
+                        if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                        }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                         frameDrawn = true;
                     } catch (e) {}
                 };
+                img.onload = renderFrame;
                 img.src = streamUrl;
 
                 const drawInterval = setInterval(() => {
                     if (img.complete && img.naturalWidth > 0 && !frameDrawn) {
-                        try {
-                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        } catch (e) {}
+                        renderFrame();
                     }
                     frameDrawn = false;
-                }, 33);
+                }, 16);
 
                 let canvasStream = null;
                 try {
-                    canvasStream = canvas.captureStream ? canvas.captureStream(30) : null;
+                    canvasStream = canvas.captureStream ? canvas.captureStream(60) : null;
                 } catch (e) {
                     console.warn('[Director] captureStream not supported:', e);
                 }
@@ -4734,7 +4738,7 @@
                     name: `Camera ${count} (${optLabel ? optLabel.split('(')[0].trim() : 'USB Capture Card'})`,
                     type: 'usb_mjpeg',
                     isRealMedia: true,
-                    resolution: '720p30',
+                    resolution: '1080p60',
                     audioDb: -14
                 });
                 document.getElementById('cameras-count').innerText = state.sources.length;

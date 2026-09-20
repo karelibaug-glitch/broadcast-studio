@@ -335,7 +335,8 @@ public class UsbCameraPlugin extends Plugin {
 
     private static final int TARGET_W   = 1920;
     private static final int TARGET_H   = 1080;
-    private static final int INTERVAL_30 = 333333; // 30fps fallback (100ns units)
+    private static final int INTERVAL_60 = 166666; // 60fps (100ns units: 10,000,000 / 60)
+    private static final int INTERVAL_30 = 333333; // 30fps fallback (100ns units: 10,000,000 / 30)
     private static final int MAX_FRAME_SIZE = 3 * 1024 * 1024; // 3MB max per JPEG frame
 
     private UsbManager usbManager;
@@ -352,6 +353,7 @@ public class UsbCameraPlugin extends Plugin {
     private CameraHelper mCameraHelper;
     private int currentWidth = TARGET_W;
     private int currentHeight = TARGET_H;
+    private int currentFps = 60;
 
     // -- Plugin Lifecycle -------------------------------------------------------
 
@@ -570,23 +572,73 @@ public class UsbCameraPlugin extends Plugin {
                     running.set(true);
 
                     Size targetSize = null;
+                    int targetFps = 60;
                     try {
                         List<Size> sizes = mCameraHelper.getSupportedSizeList();
                         if (sizes != null && !sizes.isEmpty()) {
+                            // First priority: 1920x1080 with highest frame rate (up to 60fps)
                             for (Size s : sizes) {
                                 if (s.width == 1920 && s.height == 1080) {
-                                    targetSize = s;
-                                    break;
+                                    int bestIdx = 0;
+                                    float maxFps = 0;
+                                    if (s.fps != null && s.fps.length > 0) {
+                                        for (int i = 0; i < s.fps.length; i++) {
+                                            if (s.fps[i] > maxFps) {
+                                                maxFps = s.fps[i];
+                                                bestIdx = i;
+                                            }
+                                        }
+                                    } else if (s.intervals != null && s.intervals.length > 0) {
+                                        int minInt = Integer.MAX_VALUE;
+                                        for (int i = 0; i < s.intervals.length; i++) {
+                                            if (s.intervals[i] > 0 && s.intervals[i] < minInt) {
+                                                minInt = s.intervals[i];
+                                                bestIdx = i;
+                                                maxFps = 10000000.0f / minInt;
+                                            }
+                                        }
+                                    }
+                                    s.frameIntervalIndex = bestIdx;
+                                    if (targetSize == null || maxFps > targetFps) {
+                                        targetSize = s;
+                                        targetFps = Math.round(maxFps > 0 ? maxFps : 60);
+                                    }
+                                    if (maxFps >= 59.0f) break; // Optimal 1080p60 found
                                 }
                             }
+
+                            // Second priority: 1280x720 (if capture card only supports 60fps in 720p or no 1080p)
                             if (targetSize == null) {
                                 for (Size s : sizes) {
                                     if (s.width == 1280 && s.height == 720) {
-                                        targetSize = s;
-                                        break;
+                                        int bestIdx = 0;
+                                        float maxFps = 0;
+                                        if (s.fps != null && s.fps.length > 0) {
+                                            for (int i = 0; i < s.fps.length; i++) {
+                                                if (s.fps[i] > maxFps) {
+                                                    maxFps = s.fps[i];
+                                                    bestIdx = i;
+                                                }
+                                            }
+                                        } else if (s.intervals != null && s.intervals.length > 0) {
+                                            int minInt = Integer.MAX_VALUE;
+                                            for (int i = 0; i < s.intervals.length; i++) {
+                                                if (s.intervals[i] > 0 && s.intervals[i] < minInt) {
+                                                    minInt = s.intervals[i];
+                                                    bestIdx = i;
+                                                    maxFps = 10000000.0f / minInt;
+                                                }
+                                            }
+                                        }
+                                        s.frameIntervalIndex = bestIdx;
+                                        if (targetSize == null || maxFps > targetFps) {
+                                            targetSize = s;
+                                            targetFps = Math.round(maxFps > 0 ? maxFps : 60);
+                                        }
                                     }
                                 }
                             }
+
                             if (targetSize == null) {
                                 targetSize = sizes.get(0);
                             }
@@ -600,10 +652,13 @@ public class UsbCameraPlugin extends Plugin {
                             mCameraHelper.setPreviewSize(targetSize);
                             currentWidth = targetSize.width;
                             currentHeight = targetSize.height;
+                            currentFps = targetFps > 0 ? targetFps : 60;
+                            Log.d(TAG, "Configured native UVC preview: " + currentWidth + "x" + currentHeight + " @" + currentFps + "fps");
                         } catch (Throwable ignored) {}
                     } else {
                         currentWidth = TARGET_W;
                         currentHeight = TARGET_H;
+                        currentFps = 60;
                     }
 
                     try {
@@ -819,7 +874,7 @@ public class UsbCameraPlugin extends Plugin {
     }
 
     /**
-     * UVC Probe/Commit handshake - sets format and frame indices.
+     * UVC Probe/Commit handshake - probes for 60fps first, falls back to 30fps if card demands.
      */
     private void negotiateFormat(UsbDeviceConnection conn, int ifaceId, int formatIdx, int frameIdx) {
         try {
@@ -827,15 +882,23 @@ public class UsbCameraPlugin extends Plugin {
             probe[0] = 0x01; probe[1] = 0x00;  // bmHint: fix frame interval
             probe[2] = (byte)(formatIdx & 0xFF); // bFormatIndex
             probe[3] = (byte)(frameIdx & 0xFF);  // bFrameIndex
-            probe[4] = (byte)(INTERVAL_30 & 0xFF);
-            probe[5] = (byte)((INTERVAL_30 >> 8)  & 0xFF);
-            probe[6] = (byte)((INTERVAL_30 >> 16) & 0xFF);
-            probe[7] = (byte)((INTERVAL_30 >> 24) & 0xFF);
+            // Request 60fps (166666 units: 10,000,000 / 60)
+            probe[4] = (byte)(INTERVAL_60 & 0xFF);
+            probe[5] = (byte)((INTERVAL_60 >> 8)  & 0xFF);
+            probe[6] = (byte)((INTERVAL_60 >> 16) & 0xFF);
+            probe[7] = (byte)((INTERVAL_60 >> 24) & 0xFF);
 
             conn.controlTransfer(0x21, 0x01, 0x0100, ifaceId, probe, probe.length, 1000); // SET Probe
-            conn.controlTransfer(0xA1, 0x81, 0x0100, ifaceId, probe, probe.length, 1000); // GET Probe
+            int ret = conn.controlTransfer(0xA1, 0x81, 0x0100, ifaceId, probe, probe.length, 1000); // GET Probe
+            if (ret >= 8) {
+                int negotiated = (probe[4] & 0xFF) | ((probe[5] & 0xFF) << 8) | ((probe[6] & 0xFF) << 16) | ((probe[7] & 0xFF) << 24);
+                if (negotiated > 0) {
+                    currentFps = Math.round(10000000.0f / negotiated);
+                    Log.d(TAG, "UVC negotiated frame interval: " + negotiated + " (" + currentFps + "fps)");
+                }
+            }
             conn.controlTransfer(0x21, 0x01, 0x0200, ifaceId, probe, probe.length, 1000); // SET Commit
-            Log.d(TAG, "UVC probe/commit completed: format=" + formatIdx + " frame=" + frameIdx);
+            Log.d(TAG, "UVC probe/commit completed: format=" + formatIdx + " frame=" + frameIdx + " fps=" + currentFps);
         } catch (Throwable t) {
             Log.w(TAG, "Format negotiation: " + t.getMessage());
         }
@@ -980,11 +1043,12 @@ public class UsbCameraPlugin extends Plugin {
                 mjpegServer = new UsbMjpegServer();
                 mjpegServer.start();
             }
-            Log.d(TAG, "MJPEG server: http://127.0.0.1:8088/stream");
+            Log.d(TAG, "MJPEG server: http://127.0.0.1:8088/stream (" + currentWidth + "x" + currentHeight + "@" + currentFps + "fps)");
             JSObject result = new JSObject();
             result.put("url",    "http://127.0.0.1:8088/stream");
             result.put("width",  currentWidth);
             result.put("height", currentHeight);
+            result.put("fps",    currentFps);
             notifyListeners("usbCameraReady", result);
         } catch (Throwable e) {
             Log.e(TAG, "Failed to start MJPEG server", e);

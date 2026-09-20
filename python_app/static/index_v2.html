@@ -3128,12 +3128,10 @@
                         }
 
                         const lowerLabel = label.toLowerCase();
-                        const isUsb = /usb|capture|cam link|uvc|hdmi|external|video/i.test(lowerLabel);
+                        const isUsb = /usb|capture|cam link|uvc|hdmi|external|video grabber/i.test(lowerLabel);
                         if (isUsb) {
                             label = `🔌 ${label} (USB Capture Card / UVC)`;
-                            if (window.usbMjpegStreamUrl) {
-                                option.value = '__usb_mjpeg__';
-                            }
+                            option.value = '__usb_mjpeg__';
                             if (!detectedUsbCam) detectedUsbCam = option.value;
                         } else if (lowerLabel.includes('front') || lowerLabel.includes('user') || lowerLabel.includes('face')) {
                             label = `📱 ${label} (Front Camera)`;
@@ -3155,6 +3153,18 @@
                         micSelect.appendChild(option);
                     }
                 });
+
+                // Explicitly inject Native USB Capture Card if present or streaming or native Capacitor
+                if (window.usbMjpegStreamUrl || (window.Capacitor && window.Capacitor.isNativePlatform())) {
+                    if (![...cameraSelect.options].some(o => o.value === '__usb_mjpeg__')) {
+                        const usbOption = document.createElement('option');
+                        usbOption.value = '__usb_mjpeg__';
+                        usbOption.text = '🔌 USB Capture Card / HDMI In (1080p60 UVC)';
+                        cameraSelect.appendChild(usbOption);
+                        videoCount++;
+                    }
+                    detectedUsbCam = '__usb_mjpeg__';
+                }
 
                 if (videoCount === 0) {
                     const option = document.createElement('option');
@@ -3656,28 +3666,19 @@
         };
 
         window.addCameraLayer = async function () {
-            // Check for secure context or localhost before attempting camera access
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Camera access requires a secure connection (HTTPS) or Localhost.");
-                return;
-            }
-
             const cameraSelect = document.getElementById('camera-select');
             const micSelect = document.getElementById('mic-select');
             const videoDeviceId = cameraSelect ? cameraSelect.value : null;
             const audioDeviceId = micSelect ? micSelect.value : null;
             const selectedOpt = cameraSelect && cameraSelect.selectedOptions ? cameraSelect.selectedOptions[0] : null;
+            const optCamText = selectedOpt ? selectedOpt.text.toLowerCase() : '';
             const layerTitle = selectedOpt ? selectedOpt.text.replace(/^[^\w\s]+/, '').trim() : 'Live Camera';
 
-            const isCaptureCard = selectedOpt &&
-                (selectedOpt.text.includes('Capture') || selectedOpt.text.includes('Cam Link') || selectedOpt.text.includes('HDMI') || selectedOpt.text.includes('🔌'));
-
+            const isCaptureCard = /usb|capture|cam link|uvc|hdmi|🔌/i.test(optCamText);
             const isUsbCapture = videoDeviceId === '__usb_mjpeg__' ||
-                (window.usbMjpegStreamUrl && (
-                    isCaptureCard ||
-                    /usb|capture|cam link|uvc|hdmi|🔌/i.test(selectedOpt ? selectedOpt.text : '') ||
-                    /usb|capture|cam link|uvc|hdmi/i.test(videoDeviceId || '')
-                ));
+                isCaptureCard ||
+                /usb|capture|cam link|uvc|hdmi/i.test(videoDeviceId || '') ||
+                (window.usbMjpegStreamUrl && isCaptureCard);
 
             // ── Native USB Capture Card (CameraFi-style MJPEG bridge) ─────────
             if (isUsbCapture) {
@@ -3699,23 +3700,34 @@
                 pool.appendChild(canvas);
                 const ctx = canvas.getContext('2d');
 
-                img.onload = () => {
-                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                const renderFrame = () => {
+                    if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
-                        ctx.drawImage(img, 0, 0);
-                    }
-                };
-                setInterval(() => {
-                    if (img.complete && img.naturalWidth > 0) {
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     }
-                }, 33);
+                };
+                img.onload = renderFrame;
+                setInterval(renderFrame, 16);
 
-                const fakeStream = canvas.captureStream(30);
+                const fakeStream = canvas.captureStream(60);
                 fakeStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+
+                // Attach microphone audio track if mic is selected
+                if (audioDeviceId && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    try {
+                        const aStream = await navigator.mediaDevices.getUserMedia({
+                            audio: { deviceId: { exact: audioDeviceId } },
+                            video: false
+                        });
+                        aStream.getAudioTracks().forEach(t => fakeStream.addTrack(t));
+                    } catch (e) {
+                        console.warn("[addCameraLayer] Audio attach warning for USB stream:", e);
+                    }
+                }
+
                 const layer = { id: 'layer_' + Date.now(), type: 'camera', title: layerTitle || 'USB Capture Card', x: 960, y: 540, scale: 1, zIndex: window.getNextZIndex(), audio: { volume: 1, muted: false } };
                 window.layers[layer.id] = layer;
                 window.localStreams[layer.id] = fakeStream;
@@ -3723,6 +3735,12 @@
                 renderLayerStack();
                 broadcastData({ type: 'ADD_LAYER', layer: layer });
                 broadcastMediaStreamToPeers(fakeStream, layer.id);
+                return;
+            }
+
+            // Check for secure context or localhost before attempting camera access
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera access requires a secure connection (HTTPS) or Localhost.");
                 return;
             }
 
@@ -9045,6 +9063,100 @@
             const placeholder = document.getElementById('camera-modal-preview-placeholder');
             const meterFill = document.getElementById('camera-modal-mic-meter-fill');
 
+            const selectedOpt = cameraSelect && cameraSelect.selectedOptions ? cameraSelect.selectedOptions[0] : null;
+            const optCamText = selectedOpt ? selectedOpt.text.toLowerCase() : '';
+            const isUsbCapture = videoDeviceId === '__usb_mjpeg__' ||
+                /usb|capture|cam link|uvc|hdmi|🔌/i.test(optCamText) ||
+                /usb|capture|cam link|uvc|hdmi/i.test(videoDeviceId || '') ||
+                (window.usbMjpegStreamUrl && /usb|capture|cam link|uvc|hdmi|🔌/i.test(optCamText));
+
+            // ── Native USB Capture Card Modal Preview (Direct MJPEG Canvas stream, NEVER invoke getUserMedia for video) ──
+            if (isUsbCapture) {
+                const streamUrl = window.usbMjpegStreamUrl || 'http://127.0.0.1:8088/stream';
+                let img = document.getElementById('usb-modal-preview-img');
+                if (!img) {
+                    img = document.createElement('img');
+                    img.id = 'usb-modal-preview-img';
+                    img.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1920px;height:1080px;';
+                    img.crossOrigin = 'anonymous';
+                    document.body.appendChild(img);
+                }
+                img.src = streamUrl;
+
+                let canvas = document.getElementById('usb-modal-preview-canvas');
+                if (!canvas) {
+                    canvas = document.createElement('canvas');
+                    canvas.id = 'usb-modal-preview-canvas';
+                    canvas.width = 1920; canvas.height = 1080;
+                    canvas.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+                    document.body.appendChild(canvas);
+                }
+                const ctx = canvas.getContext('2d');
+
+                if (window._usbModalPreviewInterval) {
+                    clearInterval(window._usbModalPreviewInterval);
+                }
+                window._usbModalPreviewInterval = setInterval(() => {
+                    if (img.complete && img.naturalWidth > 0) {
+                        if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                        }
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    }
+                }, 16);
+
+                try {
+                    _camModalPreviewStream = canvas.captureStream(60);
+                    _camModalPreviewStream.getVideoTracks().forEach(t => t.contentHint = 'motion');
+
+                    if (previewVideo) {
+                        previewVideo.srcObject = _camModalPreviewStream;
+                        previewVideo.muted = true;
+                        previewVideo.play().catch(() => {});
+                        if (placeholder) placeholder.classList.add('hidden');
+                    }
+                } catch (e) {
+                    console.warn("[CameraModal] canvas.captureStream error:", e);
+                }
+
+                // Microphone Audio Level Meter (Audio Only)
+                if (audioDeviceId && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    try {
+                        _camModalMicStream = await navigator.mediaDevices.getUserMedia({
+                            audio: { deviceId: { exact: audioDeviceId } },
+                            video: false
+                        });
+
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        if (AudioContextClass) {
+                            _camModalAudioCtx = new AudioContextClass();
+                            const source = _camModalAudioCtx.createMediaStreamSource(_camModalMicStream);
+                            const analyser = _camModalAudioCtx.createAnalyser();
+                            analyser.fftSize = 128;
+                            analyser.smoothingTimeConstant = 0.5;
+                            source.connect(analyser);
+
+                            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                            function meterLoop() {
+                                if (!_camModalMicStream) return;
+                                analyser.getByteFrequencyData(dataArray);
+                                let sum = 0;
+                                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                                const avg = sum / dataArray.length;
+                                const pct = Math.min(100, Math.round((avg / 100) * 100));
+                                if (meterFill) meterFill.style.width = pct + '%';
+                                _camModalAnimId = requestAnimationFrame(meterLoop);
+                            }
+                            meterLoop();
+                        }
+                    } catch (err) {
+                        console.warn("[CameraModal] Mic preview warning:", err);
+                    }
+                }
+                return;
+            }
+
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 if (placeholder) {
                     placeholder.innerHTML = `<span class="text-3xl">⚠️</span><span class="text-amber-400 font-bold">HTTPS Required for Browser Devices</span><span class="text-[11px] text-zinc-400">Switch to Host PC Hardware tab or use HTTPS</span>`;
@@ -9144,6 +9256,10 @@
         };
 
         window.stopCameraModalPreview = function () {
+            if (window._usbModalPreviewInterval) {
+                clearInterval(window._usbModalPreviewInterval);
+                window._usbModalPreviewInterval = null;
+            }
             if (_camModalAnimId) {
                 cancelAnimationFrame(_camModalAnimId);
                 _camModalAnimId = null;
