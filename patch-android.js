@@ -579,31 +579,20 @@ public class UsbCameraPlugin extends Plugin {
                             // First priority: 1920x1080 with highest frame rate (up to 60fps)
                             for (Size s : sizes) {
                                 if (s.width == 1920 && s.height == 1080) {
-                                    int bestIdx = 0;
-                                    float maxFps = 0;
-                                    if (s.fps != null && s.fps.length > 0) {
-                                        for (int i = 0; i < s.fps.length; i++) {
-                                            if (s.fps[i] > maxFps) {
-                                                maxFps = s.fps[i];
-                                                bestIdx = i;
-                                            }
-                                        }
-                                    } else if (s.intervals != null && s.intervals.length > 0) {
-                                        int minInt = Integer.MAX_VALUE;
-                                        for (int i = 0; i < s.intervals.length; i++) {
-                                            if (s.intervals[i] > 0 && s.intervals[i] < minInt) {
-                                                minInt = s.intervals[i];
-                                                bestIdx = i;
-                                                maxFps = 10000000.0f / minInt;
+                                    int maxFps = s.fps;
+                                    if (s.fpsList != null && !s.fpsList.isEmpty()) {
+                                        for (int fpsVal : s.fpsList) {
+                                            if (fpsVal > maxFps) {
+                                                maxFps = fpsVal;
                                             }
                                         }
                                     }
-                                    s.frameIntervalIndex = bestIdx;
+                                    s.fps = maxFps;
                                     if (targetSize == null || maxFps > targetFps) {
                                         targetSize = s;
-                                        targetFps = Math.round(maxFps > 0 ? maxFps : 60);
+                                        targetFps = maxFps > 0 ? maxFps : 60;
                                     }
-                                    if (maxFps >= 59.0f) break; // Optimal 1080p60 found
+                                    if (maxFps >= 59) break; // Optimal 1080p60 found
                                 }
                             }
 
@@ -611,30 +600,20 @@ public class UsbCameraPlugin extends Plugin {
                             if (targetSize == null) {
                                 for (Size s : sizes) {
                                     if (s.width == 1280 && s.height == 720) {
-                                        int bestIdx = 0;
-                                        float maxFps = 0;
-                                        if (s.fps != null && s.fps.length > 0) {
-                                            for (int i = 0; i < s.fps.length; i++) {
-                                                if (s.fps[i] > maxFps) {
-                                                    maxFps = s.fps[i];
-                                                    bestIdx = i;
-                                                }
-                                            }
-                                        } else if (s.intervals != null && s.intervals.length > 0) {
-                                            int minInt = Integer.MAX_VALUE;
-                                            for (int i = 0; i < s.intervals.length; i++) {
-                                                if (s.intervals[i] > 0 && s.intervals[i] < minInt) {
-                                                    minInt = s.intervals[i];
-                                                    bestIdx = i;
-                                                    maxFps = 10000000.0f / minInt;
+                                        int maxFps = s.fps;
+                                        if (s.fpsList != null && !s.fpsList.isEmpty()) {
+                                            for (int fpsVal : s.fpsList) {
+                                                if (fpsVal > maxFps) {
+                                                    maxFps = fpsVal;
                                                 }
                                             }
                                         }
-                                        s.frameIntervalIndex = bestIdx;
+                                        s.fps = maxFps;
                                         if (targetSize == null || maxFps > targetFps) {
                                             targetSize = s;
-                                            targetFps = Math.round(maxFps > 0 ? maxFps : 60);
+                                            targetFps = maxFps > 0 ? maxFps : 60;
                                         }
+                                        if (maxFps >= 59) break;
                                     }
                                 }
                             }
