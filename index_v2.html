@@ -3162,8 +3162,8 @@
                     }
                 });
 
-                // Explicitly inject Native USB Capture Card if present or streaming or native Capacitor
-                if (window.usbMjpegStreamUrl || (window.Capacitor && window.Capacitor.isNativePlatform())) {
+                // Explicitly inject Native USB Capture Card only if stream is live/ready
+                if (window.usbMjpegStreamUrl) {
                     if (![...cameraSelect.options].some(o => o.value === '__usb_mjpeg__')) {
                         const usbOption = document.createElement('option');
                         usbOption.value = '__usb_mjpeg__';
@@ -3171,7 +3171,7 @@
                         cameraSelect.appendChild(usbOption);
                         videoCount++;
                     }
-                    detectedUsbCam = '__usb_mjpeg__';
+                    if (!detectedUsbCam) detectedUsbCam = '__usb_mjpeg__';
                 }
 
                 if (videoCount === 0) {
@@ -3257,10 +3257,20 @@
                 return;
             }
             try {
-                if (navigator.mediaDevices.addEventListener && !window.isBrowserDeviceChangeListenerAttached) {
+                if (!window.isBrowserDeviceChangeListenerAttached) {
                     window.isBrowserDeviceChangeListenerAttached = true;
-                    navigator.mediaDevices.addEventListener('devicechange', async () => {
-                        console.log('[USB Hot-Plug] Media devices changed, re-scanning...');
+                    if (navigator.mediaDevices.addEventListener) {
+                        navigator.mediaDevices.addEventListener('devicechange', async () => {
+                            console.log('[USB Hot-Plug] Media devices changed, re-scanning...');
+                            await window.refreshBrowserDevices(false);
+                        });
+                    }
+                    document.addEventListener('usbCameraReady', async () => {
+                        console.log('[Native USB Camera] Stream ready event, refreshing devices...');
+                        await window.refreshBrowserDevices(false);
+                    });
+                    document.addEventListener('usbCameraDetached', async () => {
+                        console.log('[Native USB Camera] Detached event, refreshing devices...');
                         await window.refreshBrowserDevices(false);
                     });
                 }
@@ -3709,23 +3719,21 @@
                 const ctx = canvas.getContext('2d');
 
                 let isRunning = true;
+                let framePending = true;
+                img.onload = () => {
+                    framePending = true;
+                };
                 const renderLoop = () => {
                     if (!isRunning) return;
-                    if (img.complete && img.naturalWidth > 0) {
+                    if (framePending && img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        framePending = false;
                     }
                     requestAnimationFrame(renderLoop);
-                };
-                img.onload = () => {
-                    if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
-                        canvas.width = img.naturalWidth;
-                        canvas.height = img.naturalHeight;
-                    }
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 };
                 requestAnimationFrame(renderLoop);
 
@@ -9136,22 +9144,20 @@
                     window._usbModalPreviewInterval = null;
                 }
 
+                let framePending = true;
+                img.onload = () => {
+                    framePending = true;
+                };
                 const renderLoop = () => {
-                    if (img.complete && img.naturalWidth > 0) {
+                    if (framePending && img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        framePending = false;
                     }
                     window._usbModalPreviewAnimId = requestAnimationFrame(renderLoop);
-                };
-                img.onload = () => {
-                    if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
-                        canvas.width = img.naturalWidth;
-                        canvas.height = img.naturalHeight;
-                    }
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 };
                 window._usbModalPreviewAnimId = requestAnimationFrame(renderLoop);
 

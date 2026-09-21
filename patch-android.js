@@ -189,8 +189,8 @@ public class UsbMjpegServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         if ("/stream".equals(uri)) {
-            // Queue capacity 2: ultra-low-latency, always deliver the freshest 60fps frame
-            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(2);
+            // Queue capacity 4: ultra-low-latency buffer, prevents frame drops during Android scheduling jitter
+            final BlockingQueue<byte[]> clientQueue = new ArrayBlockingQueue<>(4);
             byte[] init = latestFrame;
             if (init != null) clientQueue.offer(init);
             activeStreams.add(clientQueue);
@@ -260,7 +260,7 @@ public class UsbMjpegServer extends NanoHTTPD {
             try {
                 byte[] frame = null;
                 while (isOpen.get() && frame == null) {
-                    frame = queue.poll(500, TimeUnit.MILLISECONDS);
+                    frame = queue.poll(100, TimeUnit.MILLISECONDS);
                 }
                 if (frame == null) { chunk = null; return; }
                 String header = "\\r\\n--" + boundary + "\\r\\nContent-Type: image/jpeg\\r\\n"
@@ -580,50 +580,98 @@ public class UsbCameraPlugin extends Plugin {
                     try {
                         List<Size> sizes = mCameraHelper.getSupportedSizeList();
                         if (sizes != null && !sizes.isEmpty()) {
-                            // First priority: 1920x1080 with highest frame rate (up to 60fps)
+                            // Helper to extract maximum fps supported by a Size safely
+                            // On UVC capture cards, MJPEG supports 60/30fps while YUY2 1080p is only 5fps.
+                            // Pass 1: Look for 1920x1080 with high FPS (>= 25fps) -> pure MJPEG 1080p60/30
                             for (Size s : sizes) {
                                 if (s.width == 1920 && s.height == 1080) {
-                                    int maxFps = s.fps;
-                                    if (s.fpsList != null && !s.fpsList.isEmpty()) {
-                                        for (int fpsVal : s.fpsList) {
-                                            if (fpsVal > maxFps) {
-                                                maxFps = fpsVal;
-                                            }
+                                    float fpsVal = 0f;
+                                    try {
+                                        if (s.fps != null && s.fps.length > 0) {
+                                            for (float f : s.fps) if (f > fpsVal) fpsVal = f;
                                         }
+                                    } catch (Throwable ignored) {}
+                                    if (fpsVal <= 0f) {
+                                        try {
+                                            if (s.intervals != null && s.intervals.length > 0) {
+                                                for (int inv : s.intervals) {
+                                                    if (inv > 0) {
+                                                        float f = 10000000.0f / inv;
+                                                        if (f > fpsVal) fpsVal = f;
+                                                    }
+                                                }
+                                            }
+                                        } catch (Throwable ignored) {}
                                     }
-                                    s.fps = maxFps;
-                                    if (targetSize == null || maxFps > targetFps) {
-                                        targetSize = s;
-                                        targetFps = maxFps > 0 ? maxFps : 60;
+                                    if (fpsVal >= 25f) {
+                                        if (targetSize == null || fpsVal > targetFps) {
+                                            targetSize = s;
+                                            targetFps = Math.round(fpsVal);
+                                        }
+                                        if (fpsVal >= 59f) break; // Optimal 1080p60 found
                                     }
-                                    if (maxFps >= 59) break; // Optimal 1080p60 found
                                 }
                             }
 
-                            // Second priority: 1280x720 (if capture card only supports 60fps in 720p or no 1080p)
+                            // Pass 2: Look for 1280x720 with high FPS (>= 25fps)
                             if (targetSize == null) {
                                 for (Size s : sizes) {
                                     if (s.width == 1280 && s.height == 720) {
-                                        int maxFps = s.fps;
-                                        if (s.fpsList != null && !s.fpsList.isEmpty()) {
-                                            for (int fpsVal : s.fpsList) {
-                                                if (fpsVal > maxFps) {
-                                                    maxFps = fpsVal;
-                                                }
+                                        float fpsVal = 0f;
+                                        try {
+                                            if (s.fps != null && s.fps.length > 0) {
+                                                for (float f : s.fps) if (f > fpsVal) fpsVal = f;
                                             }
+                                        } catch (Throwable ignored) {}
+                                        if (fpsVal <= 0f) {
+                                            try {
+                                                if (s.intervals != null && s.intervals.length > 0) {
+                                                    for (int inv : s.intervals) {
+                                                        if (inv > 0) {
+                                                            float f = 10000000.0f / inv;
+                                                            if (f > fpsVal) fpsVal = f;
+                                                        }
+                                                    }
+                                                }
+                                            } catch (Throwable ignored) {}
                                         }
-                                        s.fps = maxFps;
-                                        if (targetSize == null || maxFps > targetFps) {
-                                            targetSize = s;
-                                            targetFps = maxFps > 0 ? maxFps : 60;
+                                        if (fpsVal >= 25f) {
+                                            if (targetSize == null || fpsVal > targetFps) {
+                                                targetSize = s;
+                                                targetFps = Math.round(fpsVal);
+                                            }
+                                            if (fpsVal >= 59f) break;
                                         }
-                                        if (maxFps >= 59) break;
                                     }
                                 }
                             }
 
+                            // Pass 3: Fallback to any 1080p size
+                            if (targetSize == null) {
+                                for (Size s : sizes) {
+                                    if (s.width == 1920 && s.height == 1080) {
+                                        targetSize = s;
+                                        targetFps = 30;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Pass 4: Fallback to any 720p size
+                            if (targetSize == null) {
+                                for (Size s : sizes) {
+                                    if (s.width == 1280 && s.height == 720) {
+                                        targetSize = s;
+                                        targetFps = 30;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Pass 5: Fallback to first supported size
                             if (targetSize == null) {
                                 targetSize = sizes.get(0);
+                                targetFps = 30;
                             }
                         }
                     } catch (Throwable t) {
@@ -730,22 +778,48 @@ public class UsbCameraPlugin extends Plugin {
                 return;
             }
 
-            // Fallback for uncompressed NV21/YUV: Use pre-allocated buffer pool to avoid GC pauses
+            // Fallback for uncompressed frames (YUY2 or NV21):
             int w = currentWidth > 0 ? currentWidth : 1280;
             int h = currentHeight > 0 ? currentHeight : 720;
-            int expected = (w * h * 3) / 2;
-            if (len >= expected) {
-                if (nv21Pool == null || nv21Pool.length < len) {
-                    nv21Pool = new byte[len];
+
+            // Match resolution if buffer length corresponds to known uncompressed sizes
+            if (len == 1920 * 1080 * 2) { w = 1920; h = 1080; }
+            else if (len == 1280 * 720 * 2) { w = 1280; h = 720; }
+            else if (len == 640 * 480 * 2) { w = 640; h = 480; }
+            else if (len == (1920 * 1080 * 3) / 2) { w = 1920; h = 1080; }
+            else if (len == (1280 * 720 * 3) / 2) { w = 1280; h = 720; }
+            else if (len == (640 * 480 * 3) / 2) { w = 640; h = 480; }
+
+            int yuy2Expected = w * h * 2;
+            int nv21Expected = (w * h * 3) / 2;
+
+            if (len >= yuy2Expected) {
+                // YUY2 format (4:2:2 interleaved): MUST use ImageFormat.YUY2 to prevent green/purple color inversion
+                if (nv21Pool == null || nv21Pool.length < yuy2Expected) {
+                    nv21Pool = new byte[yuy2Expected];
                 }
-                frame.get(nv21Pool, 0, len);
-                YuvImage yuv = new YuvImage(nv21Pool, ImageFormat.NV21, w, h, null);
+                frame.get(nv21Pool, 0, yuy2Expected);
+                YuvImage yuv = new YuvImage(nv21Pool, ImageFormat.YUY2, w, h, null);
                 if (yuvOutPool == null) {
-                    yuvOutPool = new ByteArrayOutputStream(expected / 4);
+                    yuvOutPool = new ByteArrayOutputStream(yuy2Expected / 4);
                 } else {
                     yuvOutPool.reset();
                 }
-                yuv.compressToJpeg(new Rect(0, 0, w, h), 85, yuvOutPool);
+                yuv.compressToJpeg(new Rect(0, 0, w, h), 90, yuvOutPool);
+                mjpegServer.pushFrame(yuvOutPool.toByteArray());
+            } else if (len >= nv21Expected) {
+                // NV21 format (4:2:0 semi-planar)
+                if (nv21Pool == null || nv21Pool.length < nv21Expected) {
+                    nv21Pool = new byte[nv21Expected];
+                }
+                frame.get(nv21Pool, 0, nv21Expected);
+                YuvImage yuv = new YuvImage(nv21Pool, ImageFormat.NV21, w, h, null);
+                if (yuvOutPool == null) {
+                    yuvOutPool = new ByteArrayOutputStream(nv21Expected / 4);
+                } else {
+                    yuvOutPool.reset();
+                }
+                yuv.compressToJpeg(new Rect(0, 0, w, h), 90, yuvOutPool);
                 mjpegServer.pushFrame(yuvOutPool.toByteArray());
             }
         } catch (Throwable t) {
