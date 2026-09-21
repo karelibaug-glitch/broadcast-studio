@@ -4698,7 +4698,6 @@
                 pool.appendChild(canvas);
 
                 const ctx = canvas.getContext('2d');
-                let frameDrawn = false;
                 const renderFrame = () => {
                     try {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
@@ -4706,17 +4705,14 @@
                             canvas.height = img.naturalHeight;
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        frameDrawn = true;
                     } catch (e) {}
                 };
-                img.onload = renderFrame;
                 img.src = streamUrl;
 
                 const drawInterval = setInterval(() => {
-                    if (img.complete && img.naturalWidth > 0 && !frameDrawn) {
+                    if (img.complete && img.naturalWidth > 0) {
                         renderFrame();
                     }
-                    frameDrawn = false;
                 }, 16);
 
                 let canvasStream = null;

@@ -3719,19 +3719,14 @@
                 const ctx = canvas.getContext('2d');
 
                 let isRunning = true;
-                let framePending = true;
-                img.onload = () => {
-                    framePending = true;
-                };
                 const renderLoop = () => {
                     if (!isRunning) return;
-                    if (framePending && img.complete && img.naturalWidth > 0) {
+                    if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        framePending = false;
                     }
                     requestAnimationFrame(renderLoop);
                 };
@@ -9144,18 +9139,13 @@
                     window._usbModalPreviewInterval = null;
                 }
 
-                let framePending = true;
-                img.onload = () => {
-                    framePending = true;
-                };
                 const renderLoop = () => {
-                    if (framePending && img.complete && img.naturalWidth > 0) {
+                    if (img.complete && img.naturalWidth > 0) {
                         if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
                             canvas.width = img.naturalWidth;
                             canvas.height = img.naturalHeight;
                         }
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        framePending = false;
                     }
                     window._usbModalPreviewAnimId = requestAnimationFrame(renderLoop);
                 };
