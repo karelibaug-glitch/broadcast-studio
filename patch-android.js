@@ -580,35 +580,17 @@ public class UsbCameraPlugin extends Plugin {
                     try {
                         List<Size> sizes = mCameraHelper.getSupportedSizeList();
                         if (sizes != null && !sizes.isEmpty()) {
-                            // Helper to extract maximum fps supported by a Size safely
                             // On UVC capture cards, MJPEG supports 60/30fps while YUY2 1080p is only 5fps.
                             // Pass 1: Look for 1920x1080 with high FPS (>= 25fps) -> pure MJPEG 1080p60/30
                             for (Size s : sizes) {
                                 if (s.width == 1920 && s.height == 1080) {
-                                    float fpsVal = 0f;
-                                    try {
-                                        if (s.fps != null && s.fps.length > 0) {
-                                            for (float f : s.fps) if (f > fpsVal) fpsVal = f;
-                                        }
-                                    } catch (Throwable ignored) {}
-                                    if (fpsVal <= 0f) {
-                                        try {
-                                            if (s.intervals != null && s.intervals.length > 0) {
-                                                for (int inv : s.intervals) {
-                                                    if (inv > 0) {
-                                                        float f = 10000000.0f / inv;
-                                                        if (f > fpsVal) fpsVal = f;
-                                                    }
-                                                }
-                                            }
-                                        } catch (Throwable ignored) {}
-                                    }
-                                    if (fpsVal >= 25f) {
+                                    int fpsVal = s.fps;
+                                    if (fpsVal >= 25) {
                                         if (targetSize == null || fpsVal > targetFps) {
                                             targetSize = s;
-                                            targetFps = Math.round(fpsVal);
+                                            targetFps = fpsVal;
                                         }
-                                        if (fpsVal >= 59f) break; // Optimal 1080p60 found
+                                        if (fpsVal >= 59) break; // Optimal 1080p60 found
                                     }
                                 }
                             }
@@ -617,30 +599,13 @@ public class UsbCameraPlugin extends Plugin {
                             if (targetSize == null) {
                                 for (Size s : sizes) {
                                     if (s.width == 1280 && s.height == 720) {
-                                        float fpsVal = 0f;
-                                        try {
-                                            if (s.fps != null && s.fps.length > 0) {
-                                                for (float f : s.fps) if (f > fpsVal) fpsVal = f;
-                                            }
-                                        } catch (Throwable ignored) {}
-                                        if (fpsVal <= 0f) {
-                                            try {
-                                                if (s.intervals != null && s.intervals.length > 0) {
-                                                    for (int inv : s.intervals) {
-                                                        if (inv > 0) {
-                                                            float f = 10000000.0f / inv;
-                                                            if (f > fpsVal) fpsVal = f;
-                                                        }
-                                                    }
-                                                }
-                                            } catch (Throwable ignored) {}
-                                        }
-                                        if (fpsVal >= 25f) {
+                                        int fpsVal = s.fps;
+                                        if (fpsVal >= 25) {
                                             if (targetSize == null || fpsVal > targetFps) {
                                                 targetSize = s;
-                                                targetFps = Math.round(fpsVal);
+                                                targetFps = fpsVal;
                                             }
-                                            if (fpsVal >= 59f) break;
+                                            if (fpsVal >= 59) break;
                                         }
                                     }
                                 }
@@ -651,7 +616,7 @@ public class UsbCameraPlugin extends Plugin {
                                 for (Size s : sizes) {
                                     if (s.width == 1920 && s.height == 1080) {
                                         targetSize = s;
-                                        targetFps = 30;
+                                        targetFps = s.fps > 0 ? s.fps : 30;
                                         break;
                                     }
                                 }
@@ -662,7 +627,7 @@ public class UsbCameraPlugin extends Plugin {
                                 for (Size s : sizes) {
                                     if (s.width == 1280 && s.height == 720) {
                                         targetSize = s;
-                                        targetFps = 30;
+                                        targetFps = s.fps > 0 ? s.fps : 30;
                                         break;
                                     }
                                 }
@@ -671,7 +636,7 @@ public class UsbCameraPlugin extends Plugin {
                             // Pass 5: Fallback to first supported size
                             if (targetSize == null) {
                                 targetSize = sizes.get(0);
-                                targetFps = 30;
+                                targetFps = targetSize.fps > 0 ? targetSize.fps : 30;
                             }
                         }
                     } catch (Throwable t) {
