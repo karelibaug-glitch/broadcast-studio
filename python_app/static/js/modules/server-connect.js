@@ -6,6 +6,12 @@
 (function () {
     const STORAGE_KEY = 'broadcast_server_url';
 
+    window.isCapacitorApp = function () {
+        return !!(window.Capacitor && ((window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) || window.Capacitor.Plugins)) ||
+               !!window.AndroidUsbBridge ||
+               (window.location.protocol === 'capacitor:' || (window.location.hostname === 'localhost' && (window.location.port === '' || window.location.port === '80' || window.location.port === '443') && !!window.Capacitor));
+    };
+
     window.getServerUrl = function () {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored && stored.trim() !== '') {
@@ -37,7 +43,10 @@
                 return u.host;
             } catch (_) { }
         }
-        return window.location.host || 'localhost:8000';
+        if (window.location.host && window.location.host !== 'localhost' && window.location.host !== '127.0.0.1') {
+            return window.location.host;
+        }
+        return (window.location.port ? window.location.host : (window.location.hostname + ':8000')) || 'localhost:8000';
     };
 
     window.getServerHostname = function () {
@@ -72,6 +81,18 @@
         return window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     };
 
+    window.ensureServerConnected = function (actionName) {
+        const sUrl = window.getServerUrl ? window.getServerUrl() : '';
+        if (!sUrl && (window.isCapacitorApp && window.isCapacitorApp())) {
+            alert(`⚠️ Studio Server Required for ${actionName || 'Live Broadcasting'}!\n\nThis Android APK must connect to your Broadcast Studio PC or Cloud Server IP to transmit multi-RTMP streams.\n\nPlease enter your server address in Server Setup.`);
+            if (typeof window.openServerConnectModal === 'function') {
+                window.openServerConnectModal();
+            }
+            return false;
+        }
+        return true;
+    };
+
     // 1. Transparent Fetch Proxy for all /api/ and /peerjs/ endpoints
     const originalFetch = window.fetch;
     window.fetch = function (input, init) {
@@ -90,6 +111,39 @@
         }
         return originalFetch.call(this, input, init);
     };
+
+    // 2. Transparent WebSocket Proxy for /api/, /ws, or localhost WebSocket connections
+    if (typeof window.WebSocket !== 'undefined' && !window.WebSocket.__patched) {
+        const OrigWebSocket = window.WebSocket;
+        function PatchedWebSocket(url, protocols) {
+            let finalUrl = url;
+            const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+            if (serverUrl && typeof url === 'string') {
+                try {
+                    const sObj = new URL(serverUrl);
+                    const sProto = sObj.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const sHost = sObj.host;
+
+                    if (url.startsWith('/')) {
+                        finalUrl = `${sProto}//${sHost}${url}`;
+                    } else if (url.includes('//localhost') || url.includes('//127.0.0.1')) {
+                        const parsed = new URL(url);
+                        finalUrl = `${sProto}//${sHost}${parsed.pathname}${parsed.search}`;
+                    }
+                } catch (e) {
+                    console.warn('[WebSocket Proxy] Error resolving URL:', e);
+                }
+            }
+            return (protocols !== undefined) ? new OrigWebSocket(finalUrl, protocols) : new OrigWebSocket(finalUrl);
+        }
+        PatchedWebSocket.prototype = OrigWebSocket.prototype;
+        PatchedWebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+        PatchedWebSocket.OPEN = OrigWebSocket.OPEN;
+        PatchedWebSocket.CLOSING = OrigWebSocket.CLOSING;
+        PatchedWebSocket.CLOSED = OrigWebSocket.CLOSED;
+        PatchedWebSocket.__patched = true;
+        window.WebSocket = PatchedWebSocket;
+    }
 
     // 2. Dynamic PeerJS Wrapper to automatically route Peer connections to the configured server IP
     function patchPeerClass() {
@@ -343,16 +397,27 @@
         `;
         document.body.appendChild(modal);
 
-        // Top Floating Server Indicator Button (Only visible on Home / Landing page)
+        // Top Floating Server Indicator Button (Always available in APK, or on Landing view in desktop browser)
         const badge = document.createElement('button');
         badge.id = 'server-status-badge';
         badge.onclick = window.openServerConnectModal;
-        badge.style.cssText = 'position: fixed; top: 12px; right: 12px; z-index: 999999 !important; cursor: pointer; display: none;';
+        badge.style.cssText = 'position: fixed; top: 12px; right: 12px; z-index: 999999 !important; cursor: pointer; display: flex;';
         badge.className = 'px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl border backdrop-blur-md flex items-center gap-2 transition hover:scale-105 select-none';
         document.body.appendChild(badge);
         updateServerBadgeUI();
 
-        // Listen for routing / hash changes to ensure badge is only shown on landing page
+        // If in APK and no server IP configured, show top warning banner
+        if (!localStorage.getItem(STORAGE_KEY) && (window.isCapacitorApp && window.isCapacitorApp())) {
+            const banner = document.createElement('div');
+            banner.id = 'server-connect-banner';
+            banner.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; z-index: 999990 !important; cursor: pointer;';
+            banner.className = 'bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 px-4 text-center font-bold flex items-center justify-center gap-2 shadow-lg transition select-none';
+            banner.innerHTML = `<span>⚠️ Mobile APK: Connect to PC / Server IP for RTMP Live Streaming</span> <span class="bg-black/40 px-2.5 py-0.5 rounded text-[11px] border border-white/20">Set Server IP</span>`;
+            banner.onclick = window.openServerConnectModal;
+            document.body.appendChild(banner);
+        }
+
+        // Listen for routing / hash changes to ensure badge stays in sync
         window.addEventListener('hashchange', updateServerBadgeUI);
         window.addEventListener('popstate', updateServerBadgeUI);
 
@@ -364,6 +429,8 @@
         const badge = document.getElementById('server-status-badge');
         if (!badge) return;
 
+        const isApk = window.isCapacitorApp && window.isCapacitorApp();
+
         // Check if currently on the Home / Landing view where Pro Broadcast Studio displays other buttons
         const landingEl = document.getElementById('landing-view');
         const currentPath = window.location.pathname;
@@ -373,7 +440,8 @@
         const hash = window.location.hash || '';
         const isLandingActive = isOnIndexPage && landingEl && (hash === '' || hash === '#' || hash.startsWith('#landing')) && landingEl.style.display !== 'none';
 
-        if (!isLandingActive) {
+        // In APK, ALWAYS keep the server status badge visible so user can see and configure server connection
+        if (!isApk && !isLandingActive) {
             badge.style.display = 'none';
             return;
         }
@@ -385,8 +453,8 @@
         if (current) {
             badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-emerald-500/40 bg-zinc-900/90 text-emerald-400 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';
             badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 🌐 ${host}`;
-        } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-amber-500/50 bg-amber-950/80 text-amber-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';
+        } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || isApk) {
+            badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-amber-500/50 bg-amber-950/80 text-amber-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer animate-pulse';
             badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> ⚙️ Set Server IP`;
         } else {
             badge.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold shadow-2xl border border-zinc-700 bg-zinc-900/90 text-zinc-300 backdrop-blur-md flex items-center gap-1.5 transition hover:scale-105 cursor-pointer';

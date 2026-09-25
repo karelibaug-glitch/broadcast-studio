@@ -1448,6 +1448,19 @@
                 </button>
             </div>
 
+            <!-- Studio Server Connection Indicator Bar -->
+            <div id="rtmp-server-status-bar" class="px-4 sm:px-5 py-2 bg-zinc-950 border-b border-zinc-800/80 flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2">
+                    <span id="rtmp-server-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-zinc-400">Studio Server:</span>
+                    <span id="rtmp-server-host" class="font-mono font-bold text-zinc-200">127.0.0.1:8000</span>
+                </div>
+                <button type="button" onclick="if (typeof openServerConnectModal === 'function') openServerConnectModal()"
+                    class="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition flex items-center gap-1">
+                    ⚙️ Set / Change Server IP
+                </button>
+            </div>
+
             <!-- Broadcast Master Dashboard -->
             <div
                 class="p-4 sm:p-5 border-b border-zinc-800 bg-zinc-900/50 flex flex-wrap items-center justify-between gap-4">
@@ -6182,6 +6195,20 @@
         window.openRTMPModal = function () {
             const modal = document.getElementById('rtmp-modal');
             if (modal) modal.classList.remove('hidden');
+
+            // Update Studio Server Indicator Bar in Modal
+            const sHostEl = document.getElementById('rtmp-server-host');
+            const sDotEl = document.getElementById('rtmp-server-dot');
+            if (sHostEl && typeof window.getServerHost === 'function') {
+                const host = window.getServerHost();
+                const isCap = typeof window.isCapacitorApp === 'function' && window.isCapacitorApp();
+                const isConfigured = !isCap || (localStorage.getItem('studio_server_ip') && localStorage.getItem('studio_server_ip').trim() !== '');
+                sHostEl.innerText = host;
+                if (sDotEl) {
+                    sDotEl.className = isConfigured ? 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse' : 'w-2 h-2 rounded-full bg-amber-500 animate-ping';
+                }
+            }
+
             fetchRTMPDestinations();
             fetchRTMPStatus();
             if (!rtmpPollInterval) {
@@ -6289,6 +6316,11 @@
         }
 
         window.addRTMPDestination = async function () {
+            if (typeof window.ensureServerConnected === 'function') {
+                const ok = window.ensureServerConnected('Saving Destination');
+                if (!ok) return;
+            }
+
             const name = document.getElementById('rtmp-input-name').value.trim();
             const platform = document.getElementById('rtmp-input-platform').value;
             const url = document.getElementById('rtmp-input-url').value.trim();
@@ -7774,9 +7806,10 @@
                 renderMasterBroadcastFrame(performance.now());
 
                 // Establish Multi-Link Bonded Sockets Pool FIRST
-                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsProto = (typeof window.getWsProtocol === 'function') ? window.getWsProtocol() : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
+                const sHost = (typeof window.getServerHost === 'function') ? window.getServerHost() : window.location.host;
                 const linkTargets = [
-                    { id: 'primary', url: `${wsProtocol}//${window.location.host}/api/rtmp/stream_ingest?link_id=primary` },
+                    { id: 'primary', url: `${wsProto}//${sHost}/api/rtmp/stream_ingest?link_id=primary` },
                     ...customSecondaryLinkUrls.map((url, idx) => ({ id: `custom_${idx + 1}`, url }))
                 ];
 
@@ -7817,8 +7850,12 @@
 
                 // Capture video at configured FPS
                 const videoStream = masterBroadcastCanvas.captureStream(targetFps);
+                const videoTracks = videoStream ? videoStream.getVideoTracks() : [];
                 const audioTracks = (masterAudioDest && masterAudioDest.stream) ? masterAudioDest.stream.getAudioTracks() : [];
-                const combinedStream = new MediaStream([videoStream.getVideoTracks()[0], ...audioTracks]);
+                const combinedTracks = [];
+                if (videoTracks.length > 0) combinedTracks.push(videoTracks[0]);
+                if (audioTracks.length > 0) combinedTracks.push(...audioTracks);
+                const combinedStream = new MediaStream(combinedTracks);
 
                 // Universal cross-device codec probing (Android, iOS Safari, Desktop)
                 const candidateMimeTypes = [
@@ -7835,7 +7872,7 @@
                 ];
                 let selectedMime = '';
                 for (const mime of candidateMimeTypes) {
-                    if (MediaRecorder.isTypeSupported(mime)) {
+                    if (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(mime)) {
                         selectedMime = mime;
                         break;
                     }
@@ -7847,7 +7884,12 @@
                 };
                 if (selectedMime) recOptions.mimeType = selectedMime;
 
-                masterBroadcastRecorder = new MediaRecorder(combinedStream, recOptions);
+                try {
+                    masterBroadcastRecorder = new MediaRecorder(combinedStream, recOptions);
+                } catch (recErr) {
+                    console.warn('[Bonded Ingest] MediaRecorder init with options failed, retrying without mimeType:', recErr);
+                    masterBroadcastRecorder = new MediaRecorder(combinedStream);
+                }
 
                 let chunkSendQueue = Promise.resolve();
                 const linkCongestionState = {};
@@ -7990,8 +8032,17 @@
         };
 
         async function startRTMPBroadcast() {
-            // Fetch and apply latest settings from server first
-            await fetchRTMPSettings();
+            // Verify server connection first if running in mobile APK
+            if (typeof window.ensureServerConnected === 'function') {
+                const ok = window.ensureServerConnected('Live Broadcasting');
+                if (!ok) return;
+            }
+
+            // Fetch and apply latest settings and destinations from server first
+            await Promise.allSettled([
+                fetchRTMPSettings(),
+                fetchRTMPDestinations()
+            ]);
 
             // Validate that we have active destinations configured or local recording enabled
             const enabledDestinations = (rtmpDestinations || []).filter(d => d.enabled && d.stream_key);
